@@ -1,0 +1,36 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Build artifacts
+*.wasm
+*.wat
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Local environment
+.env
+.env.local
+
+# Docker
+.dockerignore
+
+# Generated protobuf files
+/src/generated/

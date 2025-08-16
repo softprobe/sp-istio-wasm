@@ -1,0 +1,354 @@
+use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
+use prost::Message;
+
+// Include generated protobuf types
+pub mod opentelemetry {
+    pub mod proto {
+        pub mod common {
+            pub mod v1 {
+                include!(concat!(env!("OUT_DIR"), "/opentelemetry.proto.common.v1.rs"));
+            }
+        }
+        pub mod resource {
+            pub mod v1 {
+                include!(concat!(env!("OUT_DIR"), "/opentelemetry.proto.resource.v1.rs"));
+            }
+        }
+        pub mod trace {
+            pub mod v1 {
+                include!(concat!(env!("OUT_DIR"), "/opentelemetry.proto.trace.v1.rs"));
+            }
+        }
+    }
+}
+
+// Re-export commonly used types
+pub use opentelemetry::proto::common::v1::{AnyValue, KeyValue, any_value};
+pub use opentelemetry::proto::resource::v1::Resource;
+pub use opentelemetry::proto::trace::v1::{TracesData, ResourceSpans, ScopeSpans, Span, Status, span};
+
+pub struct SpanBuilder {
+    trace_id: Vec<u8>,
+    parent_span_id: Option<Vec<u8>>,
+}
+
+impl SpanBuilder {
+    pub fn new() -> Self {
+        Self {
+            trace_id: generate_trace_id(),
+            parent_span_id: None,
+        }
+    }
+
+    pub fn with_context(mut self, headers: &HashMap<String, String>) -> Self {
+        // Extract trace context from headers if present
+        if let Some(traceparent) = headers.get("traceparent") {
+            if let Some((trace_id, span_id)) = parse_traceparent(traceparent) {
+                self.trace_id = trace_id;
+                self.parent_span_id = Some(span_id);
+            }
+        }
+        
+        // If no valid trace context found, generate new one
+        if self.trace_id.is_empty() {
+            self.trace_id = generate_trace_id();
+        }
+        
+        self
+    }
+
+    pub fn create_inject_span(&self, request_headers: &HashMap<String, String>, request_body: &[u8]) -> TracesData {
+        let span_id = generate_span_id();
+        let mut attributes = Vec::new();
+        
+        // Add span type attribute
+        attributes.push(KeyValue {
+            key: "sp.span.type".to_string(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue("inject".to_string())),
+            }),
+        });
+        
+        // Add request headers as attributes
+        for (key, value) in request_headers {
+            if !should_skip_header(key) {
+                attributes.push(KeyValue {
+                    key: format!("http.request.header.{}", key.to_lowercase()),
+                    value: Some(AnyValue {
+                        value: Some(any_value::Value::StringValue(value.clone())),
+                    }),
+                });
+            }
+        }
+        
+        // Add request body if present and text-based
+        if !request_body.is_empty() {
+            let body_value = if is_text_content(request_headers) {
+                String::from_utf8_lossy(request_body).to_string()
+            } else {
+                use base64::{Engine as _, engine::general_purpose};
+                general_purpose::STANDARD.encode(request_body)
+            };
+            
+            attributes.push(KeyValue {
+                key: "http.request.body".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(body_value)),
+                }),
+            });
+        }
+        
+        let span = Span {
+            trace_id: self.trace_id.clone(),
+            span_id,
+            parent_span_id: self.parent_span_id.clone().unwrap_or_default(),
+            name: "cache_inject".to_string(),
+            kind: span::SpanKind::Client as i32,
+            start_time_unix_nano: get_current_timestamp_nanos(),
+            end_time_unix_nano: get_current_timestamp_nanos(),
+            attributes,
+            status: Some(Status {
+                code: 1, // STATUS_CODE_OK
+                message: String::new(),
+            }),
+            flags: 0,
+            ..Default::default()
+        };
+        
+        self.create_traces_data(span)
+    }
+
+    pub fn create_extract_span(
+        &self,
+        request_headers: &HashMap<String, String>,
+        request_body: &[u8],
+        response_headers: &HashMap<String, String>,
+        response_body: &[u8],
+    ) -> TracesData {
+        let span_id = generate_span_id();
+        let mut attributes = Vec::new();
+        
+        // Add span type attribute
+        attributes.push(KeyValue {
+            key: "sp.span.type".to_string(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue("extract".to_string())),
+            }),
+        });
+        
+        // Add request headers
+        for (key, value) in request_headers {
+            if !should_skip_header(key) {
+                attributes.push(KeyValue {
+                    key: format!("http.request.header.{}", key.to_lowercase()),
+                    value: Some(AnyValue {
+                        value: Some(any_value::Value::StringValue(value.clone())),
+                    }),
+                });
+            }
+        }
+        
+        // Add request body
+        if !request_body.is_empty() {
+            let body_value = if is_text_content(request_headers) {
+                String::from_utf8_lossy(request_body).to_string()
+            } else {
+                use base64::{Engine as _, engine::general_purpose};
+                general_purpose::STANDARD.encode(request_body)
+            };
+            
+            attributes.push(KeyValue {
+                key: "http.request.body".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(body_value)),
+                }),
+            });
+        }
+        
+        // Add response headers
+        for (key, value) in response_headers {
+            if !should_skip_header(key) {
+                attributes.push(KeyValue {
+                    key: format!("http.response.header.{}", key.to_lowercase()),
+                    value: Some(AnyValue {
+                        value: Some(any_value::Value::StringValue(value.clone())),
+                    }),
+                });
+            }
+        }
+        
+        // Add response status code
+        if let Some(status) = response_headers.get(":status") {
+            if let Ok(status_code) = status.parse::<i64>() {
+                attributes.push(KeyValue {
+                    key: "http.response.status_code".to_string(),
+                    value: Some(AnyValue {
+                        value: Some(any_value::Value::IntValue(status_code)),
+                    }),
+                });
+            }
+        }
+        
+        // Add response body
+        if !response_body.is_empty() {
+            let body_value = if is_text_content(response_headers) {
+                String::from_utf8_lossy(response_body).to_string()
+            } else {
+                use base64::{Engine as _, engine::general_purpose};
+                general_purpose::STANDARD.encode(response_body)
+            };
+            
+            attributes.push(KeyValue {
+                key: "http.response.body".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(body_value)),
+                }),
+            });
+        }
+        
+        let span = Span {
+            trace_id: self.trace_id.clone(),
+            span_id,
+            parent_span_id: self.parent_span_id.clone().unwrap_or_default(),
+            name: "cache_extract".to_string(),
+            kind: span::SpanKind::Server as i32,
+            start_time_unix_nano: get_current_timestamp_nanos(),
+            end_time_unix_nano: get_current_timestamp_nanos(),
+            attributes,
+            status: Some(Status {
+                code: 1, // STATUS_CODE_OK
+                message: String::new(),
+            }),
+            flags: 0,
+            ..Default::default()
+        };
+        
+        self.create_traces_data(span)
+    }
+
+    fn create_traces_data(&self, span: Span) -> TracesData {
+        TracesData {
+            resource_spans: vec![ResourceSpans {
+                resource: Some(Resource {
+                    attributes: vec![
+                        KeyValue {
+                            key: "service.name".to_string(),
+                            value: Some(AnyValue {
+                                value: Some(any_value::Value::StringValue("sp-istio-cache".to_string())),
+                            }),
+                        },
+                        KeyValue {
+                            key: "service.version".to_string(),
+                            value: Some(AnyValue {
+                                value: Some(any_value::Value::StringValue("0.1.0".to_string())),
+                            }),
+                        },
+                    ],
+                    dropped_attributes_count: 0,
+                    entity_refs: vec![],
+                }),
+                scope_spans: vec![ScopeSpans {
+                    scope: None,
+                    spans: vec![span],
+                    schema_url: String::new(),
+                }],
+                schema_url: String::new(),
+            }],
+        }
+    }
+}
+
+pub fn serialize_traces_data(traces_data: &TracesData) -> Result<Vec<u8>, prost::EncodeError> {
+    let mut buf = Vec::new();
+    traces_data.encode(&mut buf)?;
+    Ok(buf)
+}
+
+fn generate_trace_id() -> Vec<u8> {
+    let mut trace_id = vec![0u8; 16];
+    
+    // Use system time as source of randomness
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    
+    let nanos = now.as_nanos() as u64;
+    let secs = now.as_secs();
+    
+    // Fill first 8 bytes with seconds
+    trace_id[0..8].copy_from_slice(&secs.to_be_bytes());
+    // Fill last 8 bytes with nanoseconds
+    trace_id[8..16].copy_from_slice(&nanos.to_be_bytes());
+    
+    trace_id
+}
+
+fn generate_span_id() -> Vec<u8> {
+    let mut span_id = vec![0u8; 8];
+    
+    // Use system time as source of randomness
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    
+    let nanos = now.as_nanos() as u64;
+    span_id.copy_from_slice(&nanos.to_be_bytes());
+    
+    span_id
+}
+
+fn parse_traceparent(traceparent: &str) -> Option<(Vec<u8>, Vec<u8>)> {
+    let parts: Vec<&str> = traceparent.split('-').collect();
+    if parts.len() != 4 {
+        return None;
+    }
+    
+    let trace_id = hex_decode(parts[1])?;
+    let span_id = hex_decode(parts[2])?;
+    
+    Some((trace_id, span_id))
+}
+
+fn hex_decode(hex: &str) -> Option<Vec<u8>> {
+    if hex.len() % 2 != 0 {
+        return None;
+    }
+    
+    let mut result = Vec::new();
+    for i in (0..hex.len()).step_by(2) {
+        if let Ok(byte) = u8::from_str_radix(&hex[i..i+2], 16) {
+            result.push(byte);
+        } else {
+            return None;
+        }
+    }
+    
+    Some(result)
+}
+
+fn get_current_timestamp_nanos() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64
+}
+
+fn should_skip_header(key: &str) -> bool {
+    matches!(key.to_lowercase().as_str(), 
+        "authorization" | "cookie" | "set-cookie" | 
+        "x-api-key" | "x-auth-token" | "bearer" |
+        "proxy-authorization"
+    )
+}
+
+fn is_text_content(headers: &HashMap<String, String>) -> bool {
+    if let Some(content_type) = headers.get("content-type") {
+        content_type.starts_with("text/") || 
+        content_type.starts_with("application/json") ||
+        content_type.starts_with("application/xml") ||
+        content_type.starts_with("application/x-www-form-urlencoded")
+    } else {
+        false
+    }
+}

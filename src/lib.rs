@@ -53,7 +53,8 @@ impl SpCacheHttpContext {
 
 impl Context for SpCacheHttpContext {
     fn on_http_call_response(&mut self, token_id: u32, _num_headers: usize, body_size: usize, _num_trailers: usize) {
-        log::info!("SP Cache: Received HTTP call response for token: {}", token_id);
+        log::debug!("SP Cache: Received HTTP call response for token: {}", token_id);
+        log::debug!("SP Cache: pending_cache_lookup = {:?}", self.pending_cache_lookup);
         
         // Check if this is the response to our cache lookup call
         if let Some(pending_token) = self.pending_cache_lookup {
@@ -61,12 +62,29 @@ impl Context for SpCacheHttpContext {
                 log::info!("SP Cache: Processing cache lookup response");
                 self.pending_cache_lookup = None;
                 
+                // Get all response headers for debugging
+                let all_headers = self.get_http_call_response_headers();
+                log::debug!("SP Cache: All response headers: {:?}", all_headers);
+                
                 // Get response status
                 let status_code = self.get_http_call_response_header(":status")
                     .and_then(|s| s.parse::<u32>().ok())
                     .unwrap_or(500);
                 
-                log::info!("SP Cache: Response status: {}", status_code);
+                log::debug!("SP Cache: Response status: {}", status_code);
+                
+                // Log response body for debugging
+                if body_size > 0 {
+                    let response_body = self.get_http_call_response_body(0, body_size)
+                        .unwrap_or_default();
+                    if response_body.len() < 1000 {
+                        log::debug!("SP Cache: Response body: {}", String::from_utf8_lossy(&response_body));
+                    } else {
+                        log::debug!("SP Cache: Response body size: {} bytes", response_body.len());
+                    }
+                } else {
+                    log::debug!("SP Cache: No response body");
+                }
                 
                 if status_code == 200 {
                     // Cache hit - parse OTEL protobuf response
@@ -103,7 +121,11 @@ impl Context for SpCacheHttpContext {
                 
                 // Resume the paused request to continue to upstream
                 self.resume_http_request();
+            } else {
+                log::debug!("SP Cache: Response token {} doesn't match pending cache lookup {}", token_id, pending_token);
             }
+        } else {
+            log::debug!("SP Cache: Response token {} received but no pending cache lookup", token_id);
         }
     }
 }
@@ -125,7 +147,7 @@ impl HttpContext for SpCacheHttpContext {
     }
 
     fn on_http_request_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
-        log::info!("SP Cache: Processing request body, size: {}", body_size);
+        log::debug!("SP Cache: Processing request body, size: {}", body_size);
         
         // Buffer request body
         if let Some(body) = self.get_http_request_body(0, body_size) {
@@ -161,7 +183,7 @@ impl HttpContext for SpCacheHttpContext {
     }
 
     fn on_http_response_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
-        log::info!("SP Cache: Processing response body, size: {}", body_size);
+        log::debug!("SP Cache: Processing response body, size: {}", body_size);
         
         // Buffer response body
         if let Some(body) = self.get_http_response_body(0, body_size) {

@@ -58,6 +58,7 @@ static_resources:
 
   - name: outbound|443||o.softprobe.ai
     type: LOGICAL_DNS
+    dns_lookup_family: V4_ONLY
     lb_policy: ROUND_ROBIN
     load_assignment:
       cluster_name: outbound|443||o.softprobe.ai

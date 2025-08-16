@@ -69,9 +69,12 @@ impl HttpClient {
             }
         }
         
-        log::info!("SP Cache: Using upstream: {}, headers: {:?}", upstream_name, http_headers);
+        log::debug!("SP Cache: Using upstream: {}, headers: {:?}", upstream_name, http_headers);
+        log::debug!("SP Cache: Request body size: {} bytes", body.len());
+        log::debug!("SP Cache: Timeout: 30 seconds");
         
         // Dispatch the HTTP call
+        log::debug!("SP Cache: About to call dispatch_http_call...");
         match proxy_wasm::hostcalls::dispatch_http_call(
             upstream_name,
             http_headers,
@@ -80,7 +83,7 @@ impl HttpClient {
             Duration::from_secs(30),
         ) {
             Ok(call_id) => {
-                log::info!("SP Cache: HTTP call dispatched successfully with ID: {}", call_id);
+                log::debug!("SP Cache: HTTP call dispatched successfully with ID: {}", call_id);
                 Ok(call_id)
             }
             Err(status) => {

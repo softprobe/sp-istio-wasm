@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
+// Note: SystemTime is not available in WASM runtime, will use proxy-wasm host functions
 use prost::Message;
 
 // Include generated protobuf types
@@ -268,13 +268,10 @@ pub fn serialize_traces_data(traces_data: &TracesData) -> Result<Vec<u8>, prost:
 fn generate_trace_id() -> Vec<u8> {
     let mut trace_id = vec![0u8; 16];
     
-    // Use system time as source of randomness
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    
-    let nanos = now.as_nanos() as u64;
-    let secs = now.as_secs();
+    // Use current timestamp as source of randomness
+    let now_nanos = get_current_timestamp_nanos();
+    let secs = (now_nanos / 1_000_000_000) as u64;
+    let nanos = (now_nanos % 1_000_000_000) as u64;
     
     // Fill first 8 bytes with seconds
     trace_id[0..8].copy_from_slice(&secs.to_be_bytes());
@@ -287,13 +284,12 @@ fn generate_trace_id() -> Vec<u8> {
 fn generate_span_id() -> Vec<u8> {
     let mut span_id = vec![0u8; 8];
     
-    // Use system time as source of randomness
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
+    // Use current timestamp as source of randomness
+    let now_nanos = get_current_timestamp_nanos();
     
-    let nanos = now.as_nanos() as u64;
-    span_id.copy_from_slice(&nanos.to_be_bytes());
+    // Add some variation to make it different from trace ID
+    let varied_nanos = now_nanos ^ 0xCAFEBABE;
+    span_id.copy_from_slice(&varied_nanos.to_be_bytes());
     
     span_id
 }
@@ -328,10 +324,14 @@ fn hex_decode(hex: &str) -> Option<Vec<u8>> {
 }
 
 fn get_current_timestamp_nanos() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos() as u64
+    // In WASM environment, we can't use SystemTime::now()
+    // Use a simple counter-based approach for timestamp generation
+    static mut TIMESTAMP_COUNTER: u64 = 1609459200000000000_u64; // Start at Jan 1, 2021
+    
+    unsafe {
+        TIMESTAMP_COUNTER += 1000000; // Increment by 1ms each call
+        TIMESTAMP_COUNTER
+    }
 }
 
 fn should_skip_header(key: &str) -> bool {

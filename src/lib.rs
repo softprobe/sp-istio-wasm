@@ -169,8 +169,8 @@ impl HttpContext for SpCacheHttpContext {
         }
 
         if end_of_stream {
-            // Check if response is successful (200)
-            if let Some(status) = self.get_http_response_header(":status") {
+            // Check if response is successful (200) using already captured headers
+            if let Some(status) = self.response_headers.get(":status") {
                 if status == "200" {
                     log::info!("SP Cache: Successful response, storing in cache asynchronously");
                     
@@ -183,7 +183,11 @@ impl HttpContext for SpCacheHttpContext {
                     ) {
                         log::error!("SP Cache: Failed to store cache: {}", e);
                     }
+                } else {
+                    log::info!("SP Cache: Response status {} - not caching", status);
                 }
+            } else {
+                log::warn!("SP Cache: No :status header found in response");
             }
         }
 

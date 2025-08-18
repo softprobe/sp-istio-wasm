@@ -11,6 +11,28 @@ pub struct CacheResponse {
 }
 
 #[derive(Debug)]
+pub struct HttpCallData {
+    pub method: String,
+    pub path: String,
+    pub authority: String,
+    pub content_type: String,
+    pub content_length: String,
+    pub body: Vec<u8>,
+}
+
+impl HttpCallData {
+    pub fn headers_as_refs(&self) -> Vec<(&str, &str)> {
+        vec![
+            (":method", self.method.as_str()),
+            (":path", self.path.as_str()),
+            (":authority", self.authority.as_str()),
+            ("content-type", self.content_type.as_str()),
+            ("content-length", self.content_length.as_str()),
+        ]
+    }
+}
+
+#[derive(Debug)]
 pub enum CacheError {
     HttpError(String),
     SerializationError(String),
@@ -39,7 +61,7 @@ impl CacheHandler {
     pub fn new() -> Self {
         Self {
             http_client: HttpClient::new(),
-            softprobe_endpoint: "https://o.softprobe.ai".to_string(),
+            softprobe_endpoint: "http://localhost:8080".to_string(),
             span_builder: SpanBuilder::new(),
         }
     }
@@ -49,28 +71,28 @@ impl CacheHandler {
         self
     }
 
-    pub fn lookup_cache_async(
-        &mut self,
+    pub fn prepare_cache_lookup(
+        &self,
         request_headers: &HashMap<String, String>,
         request_body: &[u8],
-    ) -> Result<u32, CacheError> {
-        log::info!("SP Cache: Performing async cache lookup");
+    ) -> Result<HttpCallData, CacheError> {
+        log::info!("SP Cache: Preparing cache lookup data - TESTING WITH O.SOFTPROBE.AI");
 
         // Create inject span for cache lookup
         let traces_data = self.span_builder.create_inject_span(request_headers, request_body);
         
-        // Send OTEL span to Softprobe asynchronously
+        // Serialize to protobuf
         let otel_data = serialize_traces_data(&traces_data)
             .map_err(|e| CacheError::SerializationError(e.to_string()))?;
         
-        let headers = vec![
-            ("content-type".to_string(), "application/x-protobuf".to_string()),
-            ("content-length".to_string(), otel_data.len().to_string()),
-        ];
-        
-        // Dispatch async call for cache lookup
-        self.http_client.dispatch_async_post(&self.softprobe_endpoint, headers, otel_data)
-            .map_err(|e| CacheError::HttpError(e.to_string()))
+        Ok(HttpCallData {
+            method: "POST".to_string(),
+            path: "/v1/inject".to_string(),
+            authority: "host.docker.internal:8080".to_string(),
+            content_type: "application/x-protobuf".to_string(),
+            content_length: otel_data.len().to_string(),
+            body: otel_data,
+        })
     }
 
     pub fn store_cache_async(
@@ -116,10 +138,10 @@ impl CacheHandler {
             ("content-length".to_string(), otel_data.len().to_string()),
         ];
         
-        // Fire and forget async call
-        match self.http_client.dispatch_async_post(&self.softprobe_endpoint, headers, otel_data) {
-            Ok(_call_id) => {
-                log::info!("SP Cache: Async request dispatched successfully");
+        // Fire and forget async call to /v1/traces endpoint for storage
+        match self.http_client.dispatch_async_post(&self.softprobe_endpoint, "/v1/traces", headers, otel_data) {
+            Ok(call_id) => {
+                log::info!("SP Cache: Store call dispatched successfully with call_id: {}", call_id);
                 Ok(())
             }
             Err(e) => {

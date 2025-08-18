@@ -108,10 +108,6 @@ impl SpanBuilder {
             start_time_unix_nano: get_current_timestamp_nanos(),
             end_time_unix_nano: get_current_timestamp_nanos(),
             attributes,
-            status: Some(Status {
-                code: 1, // STATUS_CODE_OK
-                message: String::new(),
-            }),
             flags: 0,
             ..Default::default()
         };
@@ -230,30 +226,12 @@ impl SpanBuilder {
     fn create_traces_data(&self, span: Span) -> TracesData {
         TracesData {
             resource_spans: vec![ResourceSpans {
-                resource: Some(Resource {
-                    attributes: vec![
-                        KeyValue {
-                            key: "service.name".to_string(),
-                            value: Some(AnyValue {
-                                value: Some(any_value::Value::StringValue("sp-istio-cache".to_string())),
-                            }),
-                        },
-                        KeyValue {
-                            key: "service.version".to_string(),
-                            value: Some(AnyValue {
-                                value: Some(any_value::Value::StringValue("0.1.0".to_string())),
-                            }),
-                        },
-                    ],
-                    dropped_attributes_count: 0,
-                    entity_refs: vec![],
-                }),
+                resource: Some(Resource::default()),
                 scope_spans: vec![ScopeSpans {
-                    scope: None,
                     spans: vec![span],
-                    schema_url: String::new(),
+                    ..Default::default()
                 }],
-                schema_url: String::new(),
+                ..Default::default()
             }],
         }
     }

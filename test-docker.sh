@@ -49,12 +49,11 @@ cleanup
 
 print_status "Starting Envoy container with WASM extension..."
 
-# Run Envoy in Docker container
+# Run Envoy in Docker container with host networking
 docker rm -f envoy-wasm-test
 docker run -d \
     --name envoy-wasm-test \
-    -p 18000:18000 \
-    -p 18001:18001 \
+    --network host \
     -v "$(pwd)/target/wasm32-unknown-unknown/release/sp_istio_cache.wasm:/tmp/sp_istio_cache.wasm:ro" \
     -v "$(pwd)/test/docker-envoy.yaml:/etc/envoy/envoy.yaml:ro" \
     envoyproxy/envoy:v1.27-latest \

@@ -35,6 +35,7 @@ impl HttpClient {
     pub fn dispatch_async_post(
         &self,
         url: &str,
+        path: &str,
         headers: Vec<(String, String)>,
         body: Vec<u8>,
     ) -> Result<u32, HttpError> {
@@ -46,20 +47,21 @@ impl HttpClient {
             .map(|(k, v)| (k.as_str(), v.as_str()))
             .collect();
         
-        // We only support calls to the Softprobe endpoint
-        if !url.starts_with("https://o.softprobe.ai") {
+        // Support local backend and httpbin for testing
+        let (upstream_name, authority) = if url.starts_with("https://httpbin.org") {
+            ("httpbin", "httpbin.org")
+        } else if url.starts_with("http://localhost:8080") {
+            ("local_backend", "host.docker.internal:8080")
+        } else {
             log::error!("SP Cache: Unsupported URL: {}", url);
             return Err(HttpError::DispatchError(Status::BadArgument));
-        }
+        };
         
-        let upstream_name = "outbound|443||o.softprobe.ai";
-        
-        // Create proper HTTP/2 headers for external HTTPS requests
+        // Create proper HTTP headers for external HTTPS requests
         let mut http_headers = vec![
             (":method", "POST"),
-            (":path", "/v1/traces"), // OpenTelemetry traces endpoint
-            (":scheme", "https"),
-            (":authority", "o.softprobe.ai"),
+            (":path", path),
+            (":authority", authority),
         ];
         
         // Add custom headers (avoid duplicate host header)
@@ -69,9 +71,19 @@ impl HttpClient {
             }
         }
         
-        log::debug!("SP Cache: Using upstream: {}, headers: {:?}", upstream_name, http_headers);
-        log::debug!("SP Cache: Request body size: {} bytes", body.len());
-        log::debug!("SP Cache: Timeout: 30 seconds");
+        log::info!("SP Cache: HTTP Request Details:");
+        log::info!("SP Cache: - URL: {}", url);
+        log::info!("SP Cache: - Upstream: {}", upstream_name);
+        log::info!("SP Cache: - Method: POST");
+        log::info!("SP Cache: - Path: {}", path);
+        log::info!("SP Cache: - Headers: {:?}", http_headers);
+        log::info!("SP Cache: - Body size: {} bytes", body.len());
+        log::info!("SP Cache: - Timeout: 30 seconds");
+        if body.len() < 100 {
+            log::info!("SP Cache: - Body hex: {:02x?}", &body);
+        } else {
+            log::info!("SP Cache: - Body hex (first 50 bytes): {:02x?}", &body[..50]);
+        }
         
         // Dispatch the HTTP call
         log::debug!("SP Cache: About to call dispatch_http_call...");

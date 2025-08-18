@@ -30,9 +30,11 @@ static_resources:
                 name: "sp_cache"
                 vm_config:
                   vm_id: "sp_cache"
+                  runtime: "envoy.wasm.runtime.v8"
+                  allow_precompiled: true
                   code:
                     local:
-                      filename: "/tmp/sp_istio_cache.wasm"
+                      filename: "/etc/envoy/sp_istio_cache.wasm"
           - name: envoy.filters.http.router
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -56,24 +58,20 @@ static_resources:
         "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
         sni: httpbin.org
 
-  - name: outbound|443||o.softprobe.ai
+
+  - name: local_backend
     type: LOGICAL_DNS
     dns_lookup_family: V4_ONLY
     lb_policy: ROUND_ROBIN
     load_assignment:
-      cluster_name: outbound|443||o.softprobe.ai
+      cluster_name: local_backend
       endpoints:
       - lb_endpoints:
         - endpoint:
             address:
               socket_address:
-                address: o.softprobe.ai
-                port_value: 443
-    transport_socket:
-      name: envoy.transport_sockets.tls
-      typed_config:
-        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
-        sni: o.softprobe.ai
+                address: host.docker.internal
+                port_value: 8080
 
 admin:
   address:

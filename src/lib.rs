@@ -1,16 +1,30 @@
 use proxy_wasm::traits::*;
 use proxy_wasm::types::*;
 use std::collections::HashMap;
+use url::Url;
 
 mod otel;
 
 use crate::otel::{SpanBuilder, serialize_traces_data};
 
 #[derive(Debug, Clone)]
-pub struct CacheResponse {
+pub struct AgentResponse {
     pub status_code: u32,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub sp_backend_url: String,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            sp_backend_url: "http://o.softprobe.ai".to_string(),
+        }
+    }
 }
 
 // Main entry point for the WASM module
@@ -18,7 +32,7 @@ pub struct CacheResponse {
 proxy_wasm::main! {{
     proxy_wasm::set_log_level(LogLevel::Debug);
     proxy_wasm::set_root_context(|_| -> Box<dyn RootContext> {
-        Box::new(SpRootContext)
+        Box::new(SpRootContext::new())
     });
 }}
 
@@ -32,7 +46,17 @@ proxy_wasm::main! {{
 //    - Handles request/response processing for that specific request
 //    - Handles HTTP call responses from its own dispatch_http_call() calls
 //    - Maintains per-request state and buffers
-struct SpRootContext;
+struct SpRootContext {
+    config: Config,
+}
+
+impl SpRootContext {
+    fn new() -> Self {
+        Self {
+            config: Config::default(),
+        }
+    }
+}
 
 impl Context for SpRootContext {}
 
@@ -42,7 +66,21 @@ impl RootContext for SpRootContext {
     }
 
     fn create_http_context(&self, context_id: u32) -> Option<Box<dyn HttpContext>> {
-        Some(Box::new(SpHttpContext::new(context_id)))
+        Some(Box::new(SpHttpContext::new(context_id, self.config.clone())))
+    }
+
+    fn on_configure(&mut self, _plugin_configuration_size: usize) -> bool {
+        if let Some(config_bytes) = self.get_plugin_configuration() {
+            if let Ok(config_str) = std::str::from_utf8(&config_bytes) {
+                if let Ok(config_json) = serde_json::from_str::<serde_json::Value>(config_str) {
+                    if let Some(backend_url) = config_json.get("sp_backend_url").and_then(|v| v.as_str()) {
+                        self.config.sp_backend_url = backend_url.to_string();
+                        log::info!("SP: Configured backend URL: {}", self.config.sp_backend_url);
+                    }
+                }
+            }
+        }
+        true
     }
 }
 
@@ -62,10 +100,11 @@ struct SpHttpContext {
     span_builder: SpanBuilder,                 // OTEL span builder
     pending_inject_call_token: Option<u32>,    // Track inject lookup call token
     injected: bool,                            // Flag, true if data is injected
+    config: Config,                            // Configuration from plugin config
 }
 
 impl SpHttpContext {
-    fn new(context_id: u32) -> Self {
+    fn new(context_id: u32, config: Config) -> Self {
         Self {
             context_id: context_id,
             request_headers: HashMap::new(),
@@ -75,6 +114,31 @@ impl SpHttpContext {
             span_builder: SpanBuilder::new(),
             pending_inject_call_token: None,
             injected: false,
+            config,
+        }
+    }
+
+    fn get_backend_authority(&self) -> String {
+        match Url::parse(&self.config.sp_backend_url) {
+            Ok(url) => {
+                if let Some(host) = url.host_str() {
+                    match url.port() {
+                        Some(port) => format!("{}:{}", host, port),
+                        None => {
+                            // Use default ports based on scheme
+                            let default_port = match url.scheme() {
+                                "https" => 443,
+                                "http" => 80,
+                                _ => 80,
+                            };
+                            format!("{}:{}", host, default_port)
+                        }
+                    }
+                } else {
+                    "o.softprobe.ai".to_string()
+                }
+            }
+            Err(_) => "o.softprobe.ai".to_string(),
         }
     }
 
@@ -89,12 +153,15 @@ impl SpHttpContext {
         let otel_data = serialize_traces_data(&traces_data)
             .map_err(|e| format!("Serialization error: {}", e))?;
         
+        // Get backend authority from configured URL
+        let authority = self.get_backend_authority();
+        
         // Prepare HTTP headers for the injection lookup call
         let content_length = otel_data.len().to_string();
         let http_headers = vec![
             (":method", "POST"),
             (":path", "/v1/inject"),
-            (":authority", "host.docker.internal:8080"),
+            (":authority", &authority),
             ("content-type", "application/x-protobuf"),
             ("content-length", &content_length),
         ];
@@ -103,7 +170,7 @@ impl SpHttpContext {
         
         // Use the context's dispatch_http_call method to maintain context
         match self.dispatch_http_call(
-            "local_backend",
+            "sp_backend",
             http_headers,
             Some(&otel_data),
             vec![],
@@ -122,7 +189,7 @@ impl SpHttpContext {
 
     // Dispatch async call to save extracted data
     fn dispatch_async_extraction_save(&mut self) -> Result<(), String> {
-        log::debug!("SP: Storing cache data asynchronously");
+        log::debug!("SP: Storing agent data asynchronously");
         
         // Create extract span using references to avoid cloning
         let traces_data = self.span_builder.create_extract_span(
@@ -136,12 +203,15 @@ impl SpHttpContext {
         let otel_data = serialize_traces_data(&traces_data)
             .map_err(|e| format!("Serialization error: {}", e))?;
         
+        // Get backend authority from configured URL
+        let authority = self.get_backend_authority();
+        
         // Prepare HTTP headers for the async save call
         let content_length = otel_data.len().to_string();
         let http_headers = vec![
             (":method", "POST"),
             (":path", "/v1/traces"),
-            (":authority", "host.docker.internal:8080"),
+            (":authority", &authority),
             ("content-type", "application/x-protobuf"),
             ("content-length", &content_length),
         ];
@@ -150,7 +220,7 @@ impl SpHttpContext {
         
         // Fire and forget async call to /v1/traces endpoint for storage
         match self.dispatch_http_call(
-            "local_backend",
+            "sp_backend",
             http_headers,
             Some(&otel_data),
             vec![],
@@ -178,7 +248,7 @@ impl Context for SpHttpContext {
             log::debug!("SP:   {}: {}", key, value);
         }
         
-        // Check if this is the response to our cache lookup call
+        // Check if this is the response to our agent lookup call
         if let Some(pending_token) = self.pending_inject_call_token {
             if pending_token == token_id {
                 log::debug!("SP: Processing injection lookup response");
@@ -198,7 +268,7 @@ impl Context for SpHttpContext {
                             .unwrap_or_default();
                         log::info!("SP: Received {} bytes for injection", response_body.len());
                         
-                        // Parse the OTEL response and extract cached HTTP response
+                        // Parse the OTEL response and extract agentd HTTP response
                         match parse_otel_injection_response(&response_body) {
                             Ok(Some(injected_response)) => {
                                 log::debug!("SP: Successfully parsed injection response, status: {}, {} headers, {} bytes body", 
@@ -209,7 +279,7 @@ impl Context for SpHttpContext {
                                     .map(|(k, v)| (k.as_str(), v.as_str()))
                                     .collect();
                                 
-                                // Send cached response 
+                                // Send agentd response 
                                 let body = if injected_response.body.is_empty() { None } else { Some(injected_response.body.as_slice()) };
                                 self.send_http_response(injected_response.status_code, headers_refs, body);
                                 
@@ -325,11 +395,11 @@ impl HttpContext for SpHttpContext {
             // Check if response is successful (200) using already captured headers
             if let Some(status) = self.response_headers.get(":status") {
                 if status == "200" {
-                    log::info!("SP: Successful response, storing in cache asynchronously");
+                    log::info!("SP: Successful response, storing in agent asynchronously");
                     
                     // Send to Softprobe asynchronously (fire and forget)
                     if let Err(e) = self.dispatch_async_extraction_save() {
-                        log::error!("SP: Failed to store cache: {}", e);
+                        log::error!("SP: Failed to store agent: {}", e);
                     }
                 } else {
                     log::info!("SP: Response status {} - not caching", status);
@@ -344,8 +414,8 @@ impl HttpContext for SpHttpContext {
 
 }
 
-// Helper function to parse OTEL cache response
-fn parse_otel_injection_response(response_body: &[u8]) -> Result<Option<CacheResponse>, String> {
+// Helper function to parse OTEL agent response
+fn parse_otel_injection_response(response_body: &[u8]) -> Result<Option<AgentResponse>, String> {
     use prost::Message;
     use crate::otel::TracesData;
     
@@ -360,14 +430,14 @@ fn parse_otel_injection_response(response_body: &[u8]) -> Result<Option<CacheRes
     
     log::debug!("SP: Successfully decoded protobuf, found {} resource spans", traces_data.resource_spans.len());
     
-    // Extract cached HTTP response from span attributes
+    // Extract agentd HTTP response from span attributes
     for (i, resource_span) in traces_data.resource_spans.iter().enumerate() {
         log::debug!("SP: Processing resource span {}, found {} scope spans", i, resource_span.scope_spans.len());
         for (j, scope_span) in resource_span.scope_spans.iter().enumerate() {
             log::debug!("SP: Processing scope span {}, found {} spans", j, scope_span.spans.len());
             for (k, span) in scope_span.spans.iter().enumerate() {
                 log::debug!("SP: Processing span {}, name: '{}', {} attributes", k, span.name, span.attributes.len());
-                // Look for cached response data in span attributes
+                // Look for agentd response data in span attributes
                 let mut status_code = 200u32;
                 let mut headers = Vec::new();
                 let mut body = Vec::new();
@@ -409,21 +479,21 @@ fn parse_otel_injection_response(response_body: &[u8]) -> Result<Option<CacheRes
                 
                 // If we found response data, return it
                 if !body.is_empty() || !headers.is_empty() {
-                    log::info!("SP: Found cached response data in span '{}': status={}, {} headers, {} byte body", 
+                    log::info!("SP: Found agentd response data in span '{}': status={}, {} headers, {} byte body", 
                         span.name, status_code, headers.len(), body.len());
-                    return Ok(Some(CacheResponse {
+                    return Ok(Some(AgentResponse {
                         status_code,
                         headers,
                         body,
                     }));
                 } else {
-                    log::debug!("SP: No cached response data found in span '{}'", span.name);
+                    log::debug!("SP: No agentd response data found in span '{}'", span.name);
                 }
             }
         }
     }
     
-    log::debug!("SP: No cached response found in any spans");
+    log::debug!("SP: No agentd response found in any spans");
     Ok(None)
 }
 

@@ -1,10 +1,10 @@
-# SP-Istio Cache
+# SP-Istio Agent
 
-A transparent cache extension for Istio using WebAssembly (WASM) written in Rust.
+A transparent agent extension for Istio using WebAssembly (WASM) written in Rust.
 
 ## Overview
 
-This project extends Istio's capabilities by implementing a custom WASM extension that intercepts outgoing HTTP requests, integrates with Softprobe for caching decisions, and manages cache storage asynchronously.
+This project extends Istio's capabilities by implementing a custom WASM extension that intercepts outgoing HTTP requests, integrates with Softprobe for caching decisions, and manages agent storage asynchronously.
 
 ## Quick Start
 
@@ -50,12 +50,6 @@ This will:
 cargo build --target wasm32-unknown-unknown --release
 ```
 
-### Test Individual Components
-```bash
-./test.sh validate  # Only validate WASM binary
-./test.sh envoy     # Test with local Envoy
-```
-
 ### Deployment Operations
 ```bash
 ./deploy.sh deploy     # Deploy to cluster
@@ -69,16 +63,14 @@ cargo build --target wasm32-unknown-unknown --release
 ### Components
 
 - **src/lib.rs**: Main WASM extension logic with HTTP context handling
-- **src/cache.rs**: Cache operations and Softprobe integration
 - **src/otel.rs**: OpenTelemetry span creation and serialization
-- **src/http_client.rs**: HTTP dispatch functionality for external calls
 
 ### Flow
 
 1. **Request Interception**: Extension captures outgoing HTTP requests
-2. **Cache Lookup**: Sends request data to Softprobe for cache check
-3. **Cache Hit**: Returns cached response if available (HTTP 200)
-4. **Cache Miss**: Continues to upstream service (HTTP 404)
+2. **Agent Lookup**: Sends request data to Softprobe for agent check
+3. **Agent Hit**: Returns agentd response if available (HTTP 200)
+4. **Agent Miss**: Continues to upstream service (HTTP 404)
 5. **Response Storage**: Asynchronously stores successful responses for future caching
 
 ### Configuration
@@ -107,9 +99,7 @@ rustup target add wasm32-unknown-unknown
 sp-istio/
 ├── src/
 │   ├── lib.rs           # Main WASM extension
-│   ├── cache.rs         # Cache operations
 │   ├── otel.rs          # OpenTelemetry integration
-│   └── http_client.rs   # HTTP client
 ├── istio-configs/       # Istio resource configurations
 ├── test/               # Local testing configurations
 ├── opentelemetry/      # OpenTelemetry proto files
@@ -129,10 +119,10 @@ kubectl logs <pod-name> -c istio-proxy | grep -i wasm
 
 2. Verify SHA256 hash matches between binary and configuration:
 ```bash
-shasum -a 256 target/wasm32-unknown-unknown/release/sp_istio_cache.wasm
+shasum -a 256 target/wasm32-unknown-unknown/release/sp_istio_agent.wasm
 ```
 
-### Cache Not Working
+### Agent Not Working
 
 1. Check extension logs for "SP" messages:
 ```bash
@@ -153,6 +143,6 @@ tail -f envoy.log | grep "SP"
 ## Performance Considerations
 
 - Body buffering impacts performance for large payloads
-- Extension adds latency for cache lookups
+- Extension adds latency for agent lookups
 - Async storage minimizes impact on response time
 - Consider implementing size limits for buffered content

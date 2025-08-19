@@ -2,7 +2,7 @@
 
 set -e
 
-echo "SP-Istio Cache Deployment Script"
+echo "SP-Istio Agent Deployment Script"
 echo "================================"
 
 # Function to print colored output
@@ -42,12 +42,12 @@ fi
 
 # Function to update hash in configs
 update_configs() {
-    if [ ! -f "target/wasm32-unknown-unknown/release/sp_istio_cache.wasm.sha256" ]; then
+    if [ ! -f "target/wasm32-unknown-unknown/release/sp_istio_agent.wasm.sha256" ]; then
         print_error "SHA256 hash file not found. Run ./build.sh first."
         exit 1
     fi
     
-    HASH=$(cat target/wasm32-unknown-unknown/release/sp_istio_cache.wasm.sha256)
+    HASH=$(cat target/wasm32-unknown-unknown/release/sp_istio_agent.wasm.sha256)
     print_status "Updating configs with SHA256: $HASH"
     
     # Update WasmPlugin

@@ -27,13 +27,21 @@ static_resources:
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.wasm.v3.Wasm
               config:
-                name: "sp_cache"
+                name: "sp_agent"
                 vm_config:
-                  vm_id: "sp_cache"
+                  vm_id: "sp_agent"
+                  runtime: "envoy.wasm.runtime.v8"
+                  allow_precompiled: true
                   code:
                     local:
-                      inline_string: ""
-                      filename: "./target/wasm32-unknown-unknown/release/sp_istio_cache.wasm"
+                      filename: "/etc/envoy/sp_istio_agent.wasm"
+                configuration:
+                  "@type": type.googleapis.com/google.protobuf.StringValue
+                  value: |
+                    {
+                      "sp_backend_url": "https://o.softprobe.ai"
+                    }
+
           - name: envoy.filters.http.router
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -57,11 +65,13 @@ static_resources:
         "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
         sni: httpbin.org
 
-  - name: outbound|443||o.softprobe.ai
+# The following cluster configure is required and cannot be changed.
+  - name: sp_backend
     type: LOGICAL_DNS
+    dns_lookup_family: V4_ONLY
     lb_policy: ROUND_ROBIN
     load_assignment:
-      cluster_name: outbound|443||o.softprobe.ai
+      cluster_name: sp_backend
       endpoints:
       - lb_endpoints:
         - endpoint:
@@ -74,24 +84,6 @@ static_resources:
       typed_config:
         "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
         sni: o.softprobe.ai
-
-  - name: outbound|443||jsonplaceholder.typicode.com
-    type: LOGICAL_DNS
-    lb_policy: ROUND_ROBIN
-    load_assignment:
-      cluster_name: outbound|443||jsonplaceholder.typicode.com
-      endpoints:
-      - lb_endpoints:
-        - endpoint:
-            address:
-              socket_address:
-                address: jsonplaceholder.typicode.com
-                port_value: 443
-    transport_socket:
-      name: envoy.transport_sockets.tls
-      typed_config:
-        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
-        sni: jsonplaceholder.typicode.com
 
 admin:
   address:

@@ -1,14 +1,18 @@
 [package]
-name = "sp-istio-cache"
+name = "sp-istio-agent"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+non-wasm = []
+
 [[bin]]
 name = "test_endpoints"
 path = "test_endpoints.rs"
+required-features = ["non-wasm"]
 
 [dependencies]
 proxy-wasm = "0.2.3"
@@ -16,6 +20,7 @@ serde_json = "1.0"
 base64 = "0.22"
 prost = "0.12"
 log = "0.4"
+url = "2.5"
 
 [build-dependencies]
 prost-build = "0.12"

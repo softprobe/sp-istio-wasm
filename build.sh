@@ -2,7 +2,7 @@
 
 set -e
 
-echo "SP-Istio Cache Build Script"
+echo "SP-Istio Agent Build Script"
 echo "=========================="
 
 # Function to print colored output
@@ -39,25 +39,25 @@ print_status "Building WASM binary..."
 cargo build --target wasm32-unknown-unknown --release
 
 # Check if build was successful
-if [ -f "target/wasm32-unknown-unknown/release/sp_istio_cache.wasm" ]; then
+if [ -f "target/wasm32-unknown-unknown/release/sp_istio_agent.wasm" ]; then
     print_success "WASM binary built successfully!"
     
     # Calculate SHA256 hash
     print_status "Calculating SHA256 hash..."
     if command -v sha256sum &> /dev/null; then
-        HASH=$(sha256sum target/wasm32-unknown-unknown/release/sp_istio_cache.wasm | cut -d' ' -f1)
+        HASH=$(sha256sum target/wasm32-unknown-unknown/release/sp_istio_agent.wasm | cut -d' ' -f1)
     elif command -v shasum &> /dev/null; then
-        HASH=$(shasum -a 256 target/wasm32-unknown-unknown/release/sp_istio_cache.wasm | cut -d' ' -f1)
+        HASH=$(shasum -a 256 target/wasm32-unknown-unknown/release/sp_istio_agent.wasm | cut -d' ' -f1)
     else
         print_error "Neither sha256sum nor shasum found. Cannot calculate hash."
         exit 1
     fi
     
     print_success "SHA256: $HASH"
-    echo "$HASH" > target/wasm32-unknown-unknown/release/sp_istio_cache.wasm.sha256
+    echo "$HASH" > target/wasm32-unknown-unknown/release/sp_istio_agent.wasm.sha256
     
     # Show file size
-    SIZE=$(ls -lh target/wasm32-unknown-unknown/release/sp_istio_cache.wasm | awk '{print $5}')
+    SIZE=$(ls -lh target/wasm32-unknown-unknown/release/sp_istio_agent.wasm | awk '{print $5}')
     print_status "WASM file size: $SIZE"
     
     # Offer to update Istio configs

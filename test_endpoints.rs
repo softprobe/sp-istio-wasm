@@ -131,7 +131,7 @@ async fn test_inject_endpoint(client: &reqwest::Client) {
     let span = Span {
         trace_id: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
         span_id: vec![1, 2, 3, 4, 5, 6, 7, 8],
-        name: "cache_inject".to_string(),
+        name: "agent_inject".to_string(),
         attributes: vec![
             KeyValue {
                 key: "sp.span.type".to_string(),

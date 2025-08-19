@@ -134,9 +134,9 @@ shasum -a 256 target/wasm32-unknown-unknown/release/sp_istio_cache.wasm
 
 ### Cache Not Working
 
-1. Check extension logs for "SP Cache" messages:
+1. Check extension logs for "SP" messages:
 ```bash
-kubectl logs <pod-name> -c istio-proxy | grep "SP Cache"
+kubectl logs <pod-name> -c istio-proxy | grep "SP"
 ```
 
 2. Verify Softprobe endpoint connectivity
@@ -147,7 +147,7 @@ kubectl logs <pod-name> -c istio-proxy | grep "SP Cache"
 Use the local Envoy setup for debugging:
 ```bash
 ./test.sh envoy
-tail -f envoy.log | grep "SP Cache"
+tail -f envoy.log | grep "SP"
 ```
 
 ## Performance Considerations

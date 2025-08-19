@@ -88,7 +88,7 @@ test_with_envoy() {
     # Show recent Envoy logs
     print_status "Recent Envoy logs:"
     echo "=================="
-    tail -20 envoy.log | grep -E "(SP Cache|WASM|error|ERROR)" || echo "No relevant logs found"
+    tail -20 envoy.log | grep -E "(SP|WASM|error|ERROR)" || echo "No relevant logs found"
     
     # Cleanup
     print_status "Stopping Envoy..."

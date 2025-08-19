@@ -102,7 +102,7 @@ fi
 # Show container logs
 print_status "Recent Envoy logs:"
 echo "=================="
-docker logs envoy-wasm-test 2>&1 | grep -E "(SP Cache|WASM|wasm|error|ERROR)" | tail -20 || echo "No relevant logs found"
+docker logs envoy-wasm-test 2>&1 | grep -E "(SP|WASM|wasm|error|ERROR)" | tail -20 || echo "No relevant logs found"
 
 # Show container stats
 print_status "Container status:"

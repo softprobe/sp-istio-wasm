@@ -50,7 +50,7 @@ impl RootContext for SpRootContext {
 //
 // This is created for each HTTP request flowing through the proxy. It:
 // - Buffers request/response headers and bodies
-// - Initiates cache lookups by calling the external service
+// - Initiates inject by calling the external service, if it returns data, inject the data, otherwise, continue to upstream
 // - Handles HTTP call responses from its own dispatch_http_call() calls
 // - Maintains per-request state like pending call tokens
 struct SpHttpContext {
@@ -60,7 +60,8 @@ struct SpHttpContext {
     response_headers: HashMap<String, String>, // Buffered response headers  
     response_body: Vec<u8>,                    // Buffered response body
     span_builder: SpanBuilder,                 // OTEL span builder
-    pending_cache_lookup: Option<u32>,         // Track cache lookup call token
+    pending_inject_call_token: Option<u32>,    // Track inject lookup call token
+    injected: bool,                            // Flag, true if data is injected
 }
 
 impl SpHttpContext {
@@ -72,13 +73,14 @@ impl SpHttpContext {
             response_headers: HashMap::new(),
             response_body: Vec::new(),
             span_builder: SpanBuilder::new(),
-            pending_cache_lookup: None,
+            pending_inject_call_token: None,
+            injected: false,
         }
     }
 
-    // Dispatch injection lookup HTTP call directly using context's dispatch_http_call method
+    // Dispatch injection HTTP call directly using context's dispatch_http_call method
     fn dispatch_injection_lookup(&mut self) -> Result<u32, String> {
-        log::info!("SP Injection: Preparing injection lookup data");
+        log::debug!("SP Injection: Preparing injection lookup data");
 
         // Create inject span for injection lookup using references to avoid cloning
         let traces_data = self.span_builder.create_inject_span(&self.request_headers, &self.request_body);
@@ -97,7 +99,7 @@ impl SpHttpContext {
             ("content-length", &content_length),
         ];
         
-        log::info!("SP Injection: Dispatching injection lookup call, body size: {}", otel_data.len());
+        log::debug!("SP Injection: Dispatching injection lookup call, body size: {}", otel_data.len());
         
         // Use the context's dispatch_http_call method to maintain context
         match self.dispatch_http_call(
@@ -108,7 +110,7 @@ impl SpHttpContext {
             std::time::Duration::from_secs(30),
         ) {
             Ok(call_id) => {
-                log::info!("SP Injection: Injection lookup dispatched with call_id: {}", call_id);
+                log::debug!("SP Injection: Injection lookup dispatched with call_id: {}", call_id);
                 Ok(call_id)
             }
             Err(e) => {
@@ -118,10 +120,9 @@ impl SpHttpContext {
         }
     }
 
-    // Dispatch async cache save operation
-    fn dispatch_async_cache_save(&mut self) -> Result<(), String> {
-        
-        log::info!("SP Cache: Storing cache data asynchronously");
+    // Dispatch async call to save extracted data
+    fn dispatch_async_extraction_save(&mut self) -> Result<(), String> {
+        log::debug!("SP: Storing cache data asynchronously");
         
         // Create extract span using references to avoid cloning
         let traces_data = self.span_builder.create_extract_span(
@@ -145,7 +146,7 @@ impl SpHttpContext {
             ("content-length", &content_length),
         ];
         
-        log::info!("SP Cache: Dispatching async save call, body size: {}", otel_data.len());
+        log::info!("SP Extraction: Dispatching async save call, body size: {}", otel_data.len());
         
         // Fire and forget async call to /v1/traces endpoint for storage
         match self.dispatch_http_call(
@@ -156,11 +157,11 @@ impl SpHttpContext {
             std::time::Duration::from_secs(30),
         ) {
             Ok(call_id) => {
-                log::info!("SP Cache: Async save dispatched with call_id: {}", call_id);
+                log::debug!("SP Extraction: Async save dispatched with call_id: {}", call_id);
                 Ok(())
             }
             Err(e) => {
-                log::error!("SP Cache: Failed to dispatch async save: {:?}", e);
+                log::error!("SP Extraction: Failed to dispatch async save: {:?}", e);
                 Err(format!("Async save failed: {:?}", e))
             }
         }
@@ -169,62 +170,62 @@ impl SpHttpContext {
 
 impl Context for SpHttpContext {
     fn on_http_call_response(&mut self, token_id: u32, _num_headers: usize, body_size: usize, _num_trailers: usize) {
-        log::info!("SP Cache: *** HTTP CALL RESPONSE RECEIVED *** token: {}, body_size: {}", token_id, body_size);
-        log::info!("SP Cache: pending_cache_lookup = {:?}", self.pending_cache_lookup);
-        log::info!("SP Cache: All headers from response:");
+        log::debug!("SP: *** HTTP CALL RESPONSE RECEIVED *** token: {}, body_size: {}", token_id, body_size);
+        log::debug!("SP: pending_inject_call_token = {:?}", self.pending_inject_call_token);
+        log::debug!("SP: All headers from response:");
         let response_headers = self.get_http_call_response_headers();
         for (key, value) in &response_headers {
-            log::info!("SP Cache:   {}: {}", key, value);
+            log::debug!("SP:   {}: {}", key, value);
         }
         
         // Check if this is the response to our cache lookup call
-        if let Some(pending_token) = self.pending_cache_lookup {
+        if let Some(pending_token) = self.pending_inject_call_token {
             if pending_token == token_id {
-                log::info!("SP Cache: Processing cache lookup response");
-                self.pending_cache_lookup = None;
+                log::debug!("SP: Processing injection lookup response");
+                self.pending_inject_call_token = None;
                 
                 // Get response status
                 let status_code = self.get_http_call_response_header(":status")
                     .and_then(|s| s.parse::<u32>().ok())
                     .unwrap_or(500);
                 
-                log::info!("SP Cache: Response status: {}", status_code);
+                log::debug!("SP: Injection response status: {}", status_code);
                 
                 if status_code == 200 {
-                    // Cache hit - parse and return cached response
+                    // Injection hit - parse and return injection response
                     if body_size > 0 {
                         let response_body = self.get_http_call_response_body(0, body_size)
                             .unwrap_or_default();
-                        log::info!("SP Cache: Cache hit! Received {} bytes", response_body.len());
+                        log::info!("SP: Received {} bytes for injection", response_body.len());
                         
                         // Parse the OTEL response and extract cached HTTP response
-                        match parse_otel_cache_response(&response_body) {
-                            Ok(Some(cached_response)) => {
-                                log::info!("SP Cache: Successfully parsed cached response, status: {}, {} headers, {} bytes body", 
-                                    cached_response.status_code, cached_response.headers.len(), cached_response.body.len());
+                        match parse_otel_injection_response(&response_body) {
+                            Ok(Some(injected_response)) => {
+                                log::debug!("SP: Successfully parsed injection response, status: {}, {} headers, {} bytes body", 
+                                    injected_response.status_code, injected_response.headers.len(), injected_response.body.len());
                                 
                                 // Convert headers to &str format
-                                let headers_refs: Vec<(&str, &str)> = cached_response.headers.iter()
+                                let headers_refs: Vec<(&str, &str)> = injected_response.headers.iter()
                                     .map(|(k, v)| (k.as_str(), v.as_str()))
                                     .collect();
                                 
                                 // Send cached response 
-                                let body = if cached_response.body.is_empty() { None } else { Some(cached_response.body.as_slice()) };
-                                self.send_http_response(cached_response.status_code, headers_refs, body);
+                                let body = if injected_response.body.is_empty() { None } else { Some(injected_response.body.as_slice()) };
+                                self.send_http_response(injected_response.status_code, headers_refs, body);
                                 
-                                log::info!("SP Cache: Successfully returned cached response");
+                                log::info!("SP: Successfully injected response");
                                 return; // Don't resume - we've handled the response
                             }
                             Ok(None) => {
-                                log::warn!("SP Cache: 200 response but no cached data found");
+                                log::warn!("SP: 200 Injection response but no injection data found");
                             }
                             Err(e) => {
-                                log::error!("SP Cache: Failed to parse cache response: {}", e);
+                                log::error!("SP: Failed to parse injection response: {}", e);
                             }
                         }
                     }
                 } else {
-                    log::info!("SP Cache: Cache miss (status: {})", status_code);
+                    log::info!("SP: No data for injection (status: {})", status_code);
                 }
                 
                 // Resume the paused request
@@ -236,7 +237,7 @@ impl Context for SpHttpContext {
 
 impl HttpContext for SpHttpContext {
     fn on_http_request_headers(&mut self, _num_headers: usize, end_of_stream: bool) -> Action {
-        log::info!("SP Cache: Processing request headers");
+        log::debug!("SP: Processing request headers");
         
         // Capture request headers
         for (key, value) in self.get_http_request_headers() {
@@ -248,13 +249,13 @@ impl HttpContext for SpHttpContext {
         let span_builder = SpanBuilder::new().with_context(&headers_clone);
         self.span_builder = span_builder;
         
-        // If this is the end of the stream (no body), perform cache lookup now
+        // If this is the end of the stream (no body), perform injection lookup now
         if end_of_stream {
-            log::info!("SP Injection: No request body, performing injection lookup immediately");
+            log::debug!("SP Injection: No request body, performing injection lookup immediately");
             match self.dispatch_injection_lookup() {
                 Ok(call_id) => {
-                    log::info!("SP Injection: Injection lookup dispatched with call_id: {}, pausing request", call_id);
-                    self.pending_cache_lookup = Some(call_id);
+                    log::debug!("SP Injection: Injection lookup dispatched with call_id: {}, pausing request", call_id);
+                    self.pending_inject_call_token = Some(call_id);
                     return Action::Pause; // MUST pause until we get the injection response
                 }
                 Err(e) => {
@@ -267,7 +268,7 @@ impl HttpContext for SpHttpContext {
     }
 
     fn on_http_request_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
-        log::debug!("SP Cache: Processing request body, size: {}", body_size);
+        log::debug!("SP: Processing request body, size: {}", body_size);
         
         // Buffer request body
         if let Some(body) = self.get_http_request_body(0, body_size) {
@@ -279,7 +280,7 @@ impl HttpContext for SpHttpContext {
             match self.dispatch_injection_lookup() {
                 Ok(call_id) => {
                     log::info!("SP Injection: Injection lookup dispatched with call_id: {}, pausing request", call_id);
-                    self.pending_cache_lookup = Some(call_id);
+                    self.pending_inject_call_token = Some(call_id);
                     return Action::Pause; // MUST pause until we get the injection response
                 }
                 Err(e) => {
@@ -292,7 +293,12 @@ impl HttpContext for SpHttpContext {
     }
 
     fn on_http_response_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
-        log::info!("SP Cache: Processing response headers");
+        log::debug!("SP: Processing response headers");
+
+        // Don't extract injected data
+        if self.injected {
+            return Action::Continue
+        }
         
         // Capture response headers
         for (key, value) in self.get_http_response_headers() {
@@ -303,7 +309,12 @@ impl HttpContext for SpHttpContext {
     }
 
     fn on_http_response_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
-        log::debug!("SP Cache: Processing response body, size: {}", body_size);
+        log::debug!("SP: Processing response body, size: {}", body_size);
+
+        // Don't extract injected data
+        if self.injected {
+            return Action::Continue
+        }
         
         // Buffer response body
         if let Some(body) = self.get_http_response_body(0, body_size) {
@@ -314,17 +325,17 @@ impl HttpContext for SpHttpContext {
             // Check if response is successful (200) using already captured headers
             if let Some(status) = self.response_headers.get(":status") {
                 if status == "200" {
-                    log::info!("SP Cache: Successful response, storing in cache asynchronously");
+                    log::info!("SP: Successful response, storing in cache asynchronously");
                     
                     // Send to Softprobe asynchronously (fire and forget)
-                    if let Err(e) = self.dispatch_async_cache_save() {
-                        log::error!("SP Cache: Failed to store cache: {}", e);
+                    if let Err(e) = self.dispatch_async_extraction_save() {
+                        log::error!("SP: Failed to store cache: {}", e);
                     }
                 } else {
-                    log::info!("SP Cache: Response status {} - not caching", status);
+                    log::info!("SP: Response status {} - not caching", status);
                 }
             } else {
-                log::warn!("SP Cache: No :status header found in response");
+                log::warn!("SP: No :status header found in response");
             }
         }
 
@@ -334,28 +345,28 @@ impl HttpContext for SpHttpContext {
 }
 
 // Helper function to parse OTEL cache response
-fn parse_otel_cache_response(response_body: &[u8]) -> Result<Option<CacheResponse>, String> {
+fn parse_otel_injection_response(response_body: &[u8]) -> Result<Option<CacheResponse>, String> {
     use prost::Message;
     use crate::otel::TracesData;
     
-    log::debug!("SP Cache: Starting protobuf decode of {} bytes", response_body.len());
+    log::debug!("SP: Starting protobuf decode of {} bytes", response_body.len());
     
     // Decode OTEL protobuf response
     let traces_data = TracesData::decode(response_body)
         .map_err(|e| {
-            log::error!("SP Cache: Protobuf decode failed: {}", e);
+            log::error!("SP: Protobuf decode failed: {}", e);
             format!("Serialization error: {}", e)
         })?;
     
-    log::debug!("SP Cache: Successfully decoded protobuf, found {} resource spans", traces_data.resource_spans.len());
+    log::debug!("SP: Successfully decoded protobuf, found {} resource spans", traces_data.resource_spans.len());
     
     // Extract cached HTTP response from span attributes
     for (i, resource_span) in traces_data.resource_spans.iter().enumerate() {
-        log::debug!("SP Cache: Processing resource span {}, found {} scope spans", i, resource_span.scope_spans.len());
+        log::debug!("SP: Processing resource span {}, found {} scope spans", i, resource_span.scope_spans.len());
         for (j, scope_span) in resource_span.scope_spans.iter().enumerate() {
-            log::debug!("SP Cache: Processing scope span {}, found {} spans", j, scope_span.spans.len());
+            log::debug!("SP: Processing scope span {}, found {} spans", j, scope_span.spans.len());
             for (k, span) in scope_span.spans.iter().enumerate() {
-                log::debug!("SP Cache: Processing span {}, name: '{}', {} attributes", k, span.name, span.attributes.len());
+                log::debug!("SP: Processing span {}, name: '{}', {} attributes", k, span.name, span.attributes.len());
                 // Look for cached response data in span attributes
                 let mut status_code = 200u32;
                 let mut headers = Vec::new();
@@ -398,7 +409,7 @@ fn parse_otel_cache_response(response_body: &[u8]) -> Result<Option<CacheRespons
                 
                 // If we found response data, return it
                 if !body.is_empty() || !headers.is_empty() {
-                    log::info!("SP Cache: Found cached response data in span '{}': status={}, {} headers, {} byte body", 
+                    log::info!("SP: Found cached response data in span '{}': status={}, {} headers, {} byte body", 
                         span.name, status_code, headers.len(), body.len());
                     return Ok(Some(CacheResponse {
                         status_code,
@@ -406,13 +417,13 @@ fn parse_otel_cache_response(response_body: &[u8]) -> Result<Option<CacheRespons
                         body,
                     }));
                 } else {
-                    log::debug!("SP Cache: No cached response data found in span '{}'", span.name);
+                    log::debug!("SP: No cached response data found in span '{}'", span.name);
                 }
             }
         }
     }
     
-    log::debug!("SP Cache: No cached response found in any spans");
+    log::debug!("SP: No cached response found in any spans");
     Ok(None)
 }
 

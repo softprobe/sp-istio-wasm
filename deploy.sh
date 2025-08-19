@@ -92,7 +92,7 @@ check_status() {
         POD=$(kubectl get pods -l app=productpage -n default -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
         if [ -n "$POD" ]; then
             print_status "Checking logs for WASM extension..."
-            kubectl logs "$POD" -c istio-proxy | grep -E "(SP Cache|WASM|wasm)" | tail -10 || print_warning "No relevant logs found"
+            kubectl logs "$POD" -c istio-proxy | grep -E "(SP|WASM|wasm)" | tail -10 || print_warning "No relevant logs found"
         fi
     else
         print_warning "No productpage pods found. Make sure Istio bookinfo sample is deployed."

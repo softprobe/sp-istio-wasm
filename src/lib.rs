@@ -2,22 +2,27 @@ use proxy_wasm::traits::*;
 use proxy_wasm::types::*;
 use std::collections::HashMap;
 
-mod cache;
 mod otel;
-mod http_client;
 
-use cache::CacheHandler;
+use crate::otel::{SpanBuilder, serialize_traces_data};
+
+#[derive(Debug, Clone)]
+pub struct CacheResponse {
+    pub status_code: u32,
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+}
 
 // Main entry point for the WASM module
 // Sets up the root context which manages the entire filter lifecycle
 proxy_wasm::main! {{
     proxy_wasm::set_log_level(LogLevel::Debug);
     proxy_wasm::set_root_context(|_| -> Box<dyn RootContext> {
-        Box::new(SpCacheRoot)
+        Box::new(SpRootContext)
     });
 }}
 
-// SpCacheRoot: The singleton RootContext for the WASM module
+// SpRootContext: The singleton RootContext for the WASM module
 // 
 // In proxy-wasm architecture, there are two types of contexts:
 // 1. RootContext (this struct): One instance per worker thread, manages the entire module
@@ -27,52 +32,142 @@ proxy_wasm::main! {{
 //    - Handles request/response processing for that specific request
 //    - Handles HTTP call responses from its own dispatch_http_call() calls
 //    - Maintains per-request state and buffers
-struct SpCacheRoot;
+struct SpRootContext;
 
-impl Context for SpCacheRoot {}
+impl Context for SpRootContext {}
 
-impl RootContext for SpCacheRoot {
+impl RootContext for SpRootContext {
     fn get_type(&self) -> Option<ContextType> {
         Some(ContextType::HttpContext)
     }
 
-    fn create_http_context(&self, _context_id: u32) -> Option<Box<dyn HttpContext>> {
-        Some(Box::new(SpCacheHttpContext::new()))
+    fn create_http_context(&self, context_id: u32) -> Option<Box<dyn HttpContext>> {
+        Some(Box::new(SpHttpContext::new(context_id)))
     }
 }
 
-// SpCacheHttpContext: Per-request context for HTTP processing
+// SpHttpContext: Per-request context for HTTP processing
 //
 // This is created for each HTTP request flowing through the proxy. It:
 // - Buffers request/response headers and bodies
 // - Initiates cache lookups by calling the external service
 // - Handles HTTP call responses from its own dispatch_http_call() calls
 // - Maintains per-request state like pending call tokens
-struct SpCacheHttpContext {
+struct SpHttpContext {
     context_id: u32,                           // Unique ID for this request context
     request_headers: HashMap<String, String>,  // Buffered request headers
     request_body: Vec<u8>,                     // Buffered request body
     response_headers: HashMap<String, String>, // Buffered response headers  
     response_body: Vec<u8>,                    // Buffered response body
-    cache_handler: CacheHandler,               // Handles cache operations
+    span_builder: SpanBuilder,                 // OTEL span builder
     pending_cache_lookup: Option<u32>,         // Track cache lookup call token
 }
 
-impl SpCacheHttpContext {
-    fn new() -> Self {
+impl SpHttpContext {
+    fn new(context_id: u32) -> Self {
         Self {
-            context_id: 0, // Not used in this simplified approach
+            context_id: context_id,
             request_headers: HashMap::new(),
             request_body: Vec::new(),
             response_headers: HashMap::new(),
             response_body: Vec::new(),
-            cache_handler: CacheHandler::new(),
+            span_builder: SpanBuilder::new(),
             pending_cache_lookup: None,
+        }
+    }
+
+    // Dispatch injection lookup HTTP call directly using context's dispatch_http_call method
+    fn dispatch_injection_lookup(&mut self) -> Result<u32, String> {
+        log::info!("SP Injection: Preparing injection lookup data");
+
+        // Create inject span for injection lookup using references to avoid cloning
+        let traces_data = self.span_builder.create_inject_span(&self.request_headers, &self.request_body);
+        
+        // Serialize to protobuf
+        let otel_data = serialize_traces_data(&traces_data)
+            .map_err(|e| format!("Serialization error: {}", e))?;
+        
+        // Prepare HTTP headers for the injection lookup call
+        let content_length = otel_data.len().to_string();
+        let http_headers = vec![
+            (":method", "POST"),
+            (":path", "/v1/inject"),
+            (":authority", "host.docker.internal:8080"),
+            ("content-type", "application/x-protobuf"),
+            ("content-length", &content_length),
+        ];
+        
+        log::info!("SP Injection: Dispatching injection lookup call, body size: {}", otel_data.len());
+        
+        // Use the context's dispatch_http_call method to maintain context
+        match self.dispatch_http_call(
+            "local_backend",
+            http_headers,
+            Some(&otel_data),
+            vec![],
+            std::time::Duration::from_secs(30),
+        ) {
+            Ok(call_id) => {
+                log::info!("SP Injection: Injection lookup dispatched with call_id: {}", call_id);
+                Ok(call_id)
+            }
+            Err(e) => {
+                log::error!("SP Injection: Failed to dispatch injection lookup: {:?}", e);
+                Err(format!("Dispatch failed: {:?}", e))
+            }
+        }
+    }
+
+    // Dispatch async cache save operation
+    fn dispatch_async_cache_save(&mut self) -> Result<(), String> {
+        
+        log::info!("SP Cache: Storing cache data asynchronously");
+        
+        // Create extract span using references to avoid cloning
+        let traces_data = self.span_builder.create_extract_span(
+            &self.request_headers,
+            &self.request_body,
+            &self.response_headers,
+            &self.response_body,
+        );
+        
+        // Serialize to protobuf
+        let otel_data = serialize_traces_data(&traces_data)
+            .map_err(|e| format!("Serialization error: {}", e))?;
+        
+        // Prepare HTTP headers for the async save call
+        let content_length = otel_data.len().to_string();
+        let http_headers = vec![
+            (":method", "POST"),
+            (":path", "/v1/traces"),
+            (":authority", "host.docker.internal:8080"),
+            ("content-type", "application/x-protobuf"),
+            ("content-length", &content_length),
+        ];
+        
+        log::info!("SP Cache: Dispatching async save call, body size: {}", otel_data.len());
+        
+        // Fire and forget async call to /v1/traces endpoint for storage
+        match self.dispatch_http_call(
+            "local_backend",
+            http_headers,
+            Some(&otel_data),
+            vec![],
+            std::time::Duration::from_secs(30),
+        ) {
+            Ok(call_id) => {
+                log::info!("SP Cache: Async save dispatched with call_id: {}", call_id);
+                Ok(())
+            }
+            Err(e) => {
+                log::error!("SP Cache: Failed to dispatch async save: {:?}", e);
+                Err(format!("Async save failed: {:?}", e))
+            }
         }
     }
 }
 
-impl Context for SpCacheHttpContext {
+impl Context for SpHttpContext {
     fn on_http_call_response(&mut self, token_id: u32, _num_headers: usize, body_size: usize, _num_trailers: usize) {
         log::info!("SP Cache: *** HTTP CALL RESPONSE RECEIVED *** token: {}, body_size: {}", token_id, body_size);
         log::info!("SP Cache: pending_cache_lookup = {:?}", self.pending_cache_lookup);
@@ -139,7 +234,7 @@ impl Context for SpCacheHttpContext {
     }
 }
 
-impl HttpContext for SpCacheHttpContext {
+impl HttpContext for SpHttpContext {
     fn on_http_request_headers(&mut self, _num_headers: usize, end_of_stream: bool) -> Action {
         log::info!("SP Cache: Processing request headers");
         
@@ -148,35 +243,22 @@ impl HttpContext for SpCacheHttpContext {
             self.request_headers.insert(key, value);
         }
 
-        // Update cache handler with trace context
+        // Update span builder with trace context
         let headers_clone = self.request_headers.clone();
-        self.cache_handler = CacheHandler::new().with_context(&headers_clone);
+        let span_builder = SpanBuilder::new().with_context(&headers_clone);
+        self.span_builder = span_builder;
         
         // If this is the end of the stream (no body), perform cache lookup now
         if end_of_stream {
-            log::info!("SP Cache: No request body, performing cache lookup immediately");
-            match self.cache_handler.prepare_cache_lookup(&self.request_headers, &self.request_body) {
-                Ok(call_data) => {
-                    log::info!("SP Cache: Dispatching cache lookup HTTP call");
-                    match self.dispatch_http_call(
-                        "local_backend",
-                        call_data.headers_as_refs(),
-                        Some(&call_data.body),
-                        vec![],
-                        std::time::Duration::from_secs(30),
-                    ) {
-                        Ok(call_id) => {
-                            log::info!("SP Cache: Cache lookup dispatched with call_id: {}, pausing request", call_id);
-                            self.pending_cache_lookup = Some(call_id);
-                            return Action::Pause; // MUST pause until we get the cache response
-                        }
-                        Err(e) => {
-                            log::error!("SP Cache: Failed to dispatch cache lookup: {:?}, continuing to upstream", e);
-                        }
-                    }
+            log::info!("SP Injection: No request body, performing injection lookup immediately");
+            match self.dispatch_injection_lookup() {
+                Ok(call_id) => {
+                    log::info!("SP Injection: Injection lookup dispatched with call_id: {}, pausing request", call_id);
+                    self.pending_cache_lookup = Some(call_id);
+                    return Action::Pause; // MUST pause until we get the injection response
                 }
                 Err(e) => {
-                    log::error!("SP Cache: Cache lookup preparation error: {}, continuing to upstream", e);
+                    log::error!("SP Injection: Injection lookup error: {}, continuing to upstream", e);
                 }
             }
         }
@@ -193,29 +275,15 @@ impl HttpContext for SpCacheHttpContext {
         }
 
         if end_of_stream {
-            // Perform async cache lookup
-            match self.cache_handler.prepare_cache_lookup(&self.request_headers, &self.request_body) {
-                Ok(call_data) => {
-                    log::info!("SP Cache: Dispatching cache lookup HTTP call");
-                    match self.dispatch_http_call(
-                        "local_backend",
-                        call_data.headers_as_refs(),
-                        Some(&call_data.body),
-                        vec![],
-                        std::time::Duration::from_secs(30),
-                    ) {
-                        Ok(call_id) => {
-                            log::info!("SP Cache: Cache lookup dispatched with call_id: {}, pausing request", call_id);
-                            self.pending_cache_lookup = Some(call_id);
-                            return Action::Pause; // MUST pause until we get the cache response
-                        }
-                        Err(e) => {
-                            log::error!("SP Cache: Failed to dispatch cache lookup: {:?}, continuing to upstream", e);
-                        }
-                    }
+            // Perform async injection lookup
+            match self.dispatch_injection_lookup() {
+                Ok(call_id) => {
+                    log::info!("SP Injection: Injection lookup dispatched with call_id: {}, pausing request", call_id);
+                    self.pending_cache_lookup = Some(call_id);
+                    return Action::Pause; // MUST pause until we get the injection response
                 }
                 Err(e) => {
-                    log::error!("SP Cache: Cache lookup preparation error: {}, continuing to upstream", e);
+                    log::error!("SP Injection: Injection lookup error: {}, continuing to upstream", e);
                 }
             }
         }
@@ -249,12 +317,7 @@ impl HttpContext for SpCacheHttpContext {
                     log::info!("SP Cache: Successful response, storing in cache asynchronously");
                     
                     // Send to Softprobe asynchronously (fire and forget)
-                    if let Err(e) = self.cache_handler.store_cache_async(
-                        &self.request_headers,
-                        &self.request_body,
-                        &self.response_headers,
-                        &self.response_body,
-                    ) {
+                    if let Err(e) = self.dispatch_async_cache_save() {
                         log::error!("SP Cache: Failed to store cache: {}", e);
                     }
                 } else {
@@ -271,7 +334,7 @@ impl HttpContext for SpCacheHttpContext {
 }
 
 // Helper function to parse OTEL cache response
-fn parse_otel_cache_response(response_body: &[u8]) -> Result<Option<cache::CacheResponse>, cache::CacheError> {
+fn parse_otel_cache_response(response_body: &[u8]) -> Result<Option<CacheResponse>, String> {
     use prost::Message;
     use crate::otel::TracesData;
     
@@ -281,7 +344,7 @@ fn parse_otel_cache_response(response_body: &[u8]) -> Result<Option<cache::Cache
     let traces_data = TracesData::decode(response_body)
         .map_err(|e| {
             log::error!("SP Cache: Protobuf decode failed: {}", e);
-            cache::CacheError::SerializationError(e.to_string())
+            format!("Serialization error: {}", e)
         })?;
     
     log::debug!("SP Cache: Successfully decoded protobuf, found {} resource spans", traces_data.resource_spans.len());
@@ -337,7 +400,7 @@ fn parse_otel_cache_response(response_body: &[u8]) -> Result<Option<cache::Cache
                 if !body.is_empty() || !headers.is_empty() {
                     log::info!("SP Cache: Found cached response data in span '{}': status={}, {} headers, {} byte body", 
                         span.name, status_code, headers.len(), body.len());
-                    return Ok(Some(cache::CacheResponse {
+                    return Ok(Some(CacheResponse {
                         status_code,
                         headers,
                         body,

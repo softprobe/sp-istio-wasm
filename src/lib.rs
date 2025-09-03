@@ -8,16 +8,20 @@ mod otel;
 use crate::otel::{SpanBuilder, serialize_traces_data};
 
 #[derive(Debug, Clone)]
-pub struct AgentResponse {
-    pub status_code: u32,
-    pub headers: Vec<(String, String)>,
-    pub body: Vec<u8>,
+pub struct HttpCollectionRule {
+    pub server_path: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct CollectionRule {
+    pub http: Option<HttpCollectionRule>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Config {
     pub sp_backend_url: String,
     pub enable_inject: bool,
+    pub collection_rules: Vec<CollectionRule>,
 }
 
 impl Default for Config {
@@ -25,9 +29,19 @@ impl Default for Config {
         Self {
             sp_backend_url: "http://o.softprobe.ai".to_string(),
             enable_inject: false,
+            collection_rules: vec![],
         }
     }
 }
+
+
+#[derive(Debug, Clone)]
+pub struct AgentResponse {
+    pub status_code: u32,
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+}
+
 
 // Main entry point for the WASM module
 // Sets up the root context which manages the entire filter lifecycle
@@ -71,13 +85,37 @@ impl RootContext for SpRootContext {
         Some(Box::new(SpHttpContext::new(context_id, self.config.clone())))
     }
 
+
     fn on_configure(&mut self, _plugin_configuration_size: usize) -> bool {
         if let Some(config_bytes) = self.get_plugin_configuration() {
             if let Ok(config_str) = std::str::from_utf8(&config_bytes) {
                 if let Ok(config_json) = serde_json::from_str::<serde_json::Value>(config_str) {
+                    // 解析现有配置
                     if let Some(backend_url) = config_json.get("sp_backend_url").and_then(|v| v.as_str()) {
                         self.config.sp_backend_url = backend_url.to_string();
                         log::info!("SP: Configured backend URL: {}", self.config.sp_backend_url);
+                    }
+
+                    // 解析 enable_inject
+                    if let Some(enable_inject) = config_json.get("enable_inject").and_then(|v| v.as_bool()) {
+                        self.config.enable_inject = enable_inject;
+                        log::info!("SP: Configured injection enabled: {}", self.config.enable_inject);
+                    }
+
+                    // 解析 collectionRules
+                    if let Some(rules) = config_json.get("collectionRules").and_then(|v| v.as_array()) {
+                        for rule in rules {
+                            if let Some(http_rule) = rule.get("http") {
+                                if let Some(server_path) = http_rule.get("serverPath").and_then(|v| v.as_str()) {
+                                    self.config.collection_rules.push(CollectionRule {
+                                        http: Some(HttpCollectionRule {
+                                            server_path: server_path.to_string(),
+                                        }),
+                                    });
+                                    log::info!("SP: Added collection rule for path: {}", server_path);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -120,6 +158,39 @@ impl SpHttpContext {
         }
     }
 
+    fn should_collect_by_rules(&self) -> bool {
+        // 如果没有配置规则，则默认采集所有请求
+        if self.config.collection_rules.is_empty() {
+            return true;
+        }
+
+        // 获取当前请求路径
+        if let Some(request_path) = self.request_headers.get(":path") {
+            // 检查是否匹配任何规则
+            for rule in &self.config.collection_rules {
+                if let Some(http_rule) = &rule.http {
+                    // 使用正则表达式匹配
+                    match regex::Regex::new(&http_rule.server_path) {
+                        Ok(re) => {
+                            if re.is_match(request_path) {
+                                return true;
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("SP: Invalid regex pattern '{}': {}", http_rule.server_path, e);
+                        }
+                    }
+                }
+
+            }
+            // 没有匹配的规则
+            return false;
+        }
+
+        // 无法确定路径，默认不采集
+        false
+    }
+
     fn get_backend_authority(&self) -> String {
         match Url::parse(&self.config.sp_backend_url) {
             Ok(url) => {
@@ -149,6 +220,11 @@ impl SpHttpContext {
         if !self.config.enable_inject {
             return Err("Injection is not allowed".to_string());
         }
+        // 检查采集规则
+        if !self.should_collect_by_rules() {
+            return Err("Request does not match collection rules".to_string());
+        }
+
         log::debug!("SP Injection: Preparing injection lookup data");
 
         // Create inject span for injection lookup using references to avoid cloning
@@ -194,6 +270,11 @@ impl SpHttpContext {
 
     // Dispatch async call to save extracted data
     fn dispatch_async_extraction_save(&mut self) -> Result<(), String> {
+        // 检查采集规则
+        if !self.should_collect_by_rules() {
+            log::debug!("SP: Data extraction skipped based on collection rules");
+            return Err("Data collection skipped based on collection rules".to_string());
+        }
         log::debug!("SP: Storing agent data asynchronously");
 
         // Create extract span using references to avoid cloning

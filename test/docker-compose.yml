@@ -5,7 +5,7 @@ services:
     image: envoyproxy/envoy:v1.27-latest
     container_name: test-envoy
     volumes:
-      - ./envoy.yaml:/etc/envoy/envoy.yaml
+      - ./envoy2.yaml:/etc/envoy/envoy.yaml
       - ../target/wasm32-unknown-unknown/release/sp_istio_agent.wasm:/etc/envoy/sp_istio_agent.wasm
     ports:
       - "18000:18000"

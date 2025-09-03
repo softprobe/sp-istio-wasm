@@ -24,7 +24,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             sp_backend_url: "http://o.softprobe.ai".to_string(),
-            enable_inject: true,
+            enable_inject: false,
         }
     }
 }
@@ -363,7 +363,7 @@ impl HttpContext for SpHttpContext {
             }
         }
 
-        Action::Pause
+        Action::Continue
     }
 
     fn on_http_response_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {

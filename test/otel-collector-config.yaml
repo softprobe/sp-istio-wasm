@@ -1,0 +1,32 @@
+  receivers:
+    otlp:
+      protocols:
+        http:
+          # 监听 0.0.0.0:4318，接收 OTLP/HTTP 格式的数据
+          # 这与您 Go 代码中的 exporter 配置相匹配
+          endpoint: 0.0.0.0:4318
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+  processors:
+    batch:
+      # 批处理数据，可以提高效率，推荐使用
+
+  exporters:
+    debug: # <-- 将 logging 修改为 debug
+      verbosity: detailed # logging 的 loglevel 对应 debug 的 verbosity
+
+    otlp/jaeger:
+      # 将数据导出到 Jaeger
+      # "jaeger:14268" 是 docker-compose 网络中 Jaeger 服务的地址
+      endpoint: jaeger:14250
+      tls:
+        insecure: true # 在容器间通信，不使用 TLS
+
+  service:
+    pipelines:
+      traces:
+        # 定义一个名为 "traces" 的 pipeline
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [debug, "otlp/jaeger"]

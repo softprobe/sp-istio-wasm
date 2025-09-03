@@ -17,12 +17,14 @@ pub struct AgentResponse {
 #[derive(Debug, Clone)]
 pub struct Config {
     pub sp_backend_url: String,
+    pub enable_inject: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             sp_backend_url: "http://o.softprobe.ai".to_string(),
+            enable_inject: true,
         }
     }
 }
@@ -37,7 +39,7 @@ proxy_wasm::main! {{
 }}
 
 // SpRootContext: The singleton RootContext for the WASM module
-// 
+//
 // In proxy-wasm architecture, there are two types of contexts:
 // 1. RootContext (this struct): One instance per worker thread, manages the entire module
 //    - Creates HttpContext instances for each request
@@ -95,7 +97,7 @@ struct SpHttpContext {
     context_id: u32,                           // Unique ID for this request context
     request_headers: HashMap<String, String>,  // Buffered request headers
     request_body: Vec<u8>,                     // Buffered request body
-    response_headers: HashMap<String, String>, // Buffered response headers  
+    response_headers: HashMap<String, String>, // Buffered response headers
     response_body: Vec<u8>,                    // Buffered response body
     span_builder: SpanBuilder,                 // OTEL span builder
     pending_inject_call_token: Option<u32>,    // Track inject lookup call token
@@ -144,18 +146,21 @@ impl SpHttpContext {
 
     // Dispatch injection HTTP call directly using context's dispatch_http_call method
     fn dispatch_injection_lookup(&mut self) -> Result<u32, String> {
+        if !self.config.enable_inject {
+            return Err("Injection is not allowed".to_string());
+        }
         log::debug!("SP Injection: Preparing injection lookup data");
 
         // Create inject span for injection lookup using references to avoid cloning
         let traces_data = self.span_builder.create_inject_span(&self.request_headers, &self.request_body);
-        
+
         // Serialize to protobuf
         let otel_data = serialize_traces_data(&traces_data)
             .map_err(|e| format!("Serialization error: {}", e))?;
-        
+
         // Get backend authority from configured URL
         let authority = self.get_backend_authority();
-        
+
         // Prepare HTTP headers for the injection lookup call
         let content_length = otel_data.len().to_string();
         let http_headers = vec![
@@ -165,9 +170,9 @@ impl SpHttpContext {
             ("content-type", "application/x-protobuf"),
             ("content-length", &content_length),
         ];
-        
+
         log::debug!("SP Injection: Dispatching injection lookup call, body size: {}", otel_data.len());
-        
+
         // Use the context's dispatch_http_call method to maintain context
         match self.dispatch_http_call(
             "sp_backend",
@@ -190,7 +195,7 @@ impl SpHttpContext {
     // Dispatch async call to save extracted data
     fn dispatch_async_extraction_save(&mut self) -> Result<(), String> {
         log::debug!("SP: Storing agent data asynchronously");
-        
+
         // Create extract span using references to avoid cloning
         let traces_data = self.span_builder.create_extract_span(
             &self.request_headers,
@@ -198,14 +203,14 @@ impl SpHttpContext {
             &self.response_headers,
             &self.response_body,
         );
-        
+
         // Serialize to protobuf
         let otel_data = serialize_traces_data(&traces_data)
             .map_err(|e| format!("Serialization error: {}", e))?;
-        
+
         // Get backend authority from configured URL
         let authority = self.get_backend_authority();
-        
+
         // Prepare HTTP headers for the async save call
         let content_length = otel_data.len().to_string();
         let http_headers = vec![
@@ -215,9 +220,9 @@ impl SpHttpContext {
             ("content-type", "application/x-protobuf"),
             ("content-length", &content_length),
         ];
-        
+
         log::info!("SP Extraction: Dispatching async save call, body size: {}", otel_data.len());
-        
+
         // Fire and forget async call to /v1/traces endpoint for storage
         match self.dispatch_http_call(
             "sp_backend",
@@ -247,42 +252,41 @@ impl Context for SpHttpContext {
         for (key, value) in &response_headers {
             log::debug!("SP:   {}: {}", key, value);
         }
-        
+
         // Check if this is the response to our agent lookup call
         if let Some(pending_token) = self.pending_inject_call_token {
             if pending_token == token_id {
                 log::debug!("SP: Processing injection lookup response");
                 self.pending_inject_call_token = None;
-                
                 // Get response status
                 let status_code = self.get_http_call_response_header(":status")
                     .and_then(|s| s.parse::<u32>().ok())
                     .unwrap_or(500);
-                
+
                 log::debug!("SP: Injection response status: {}", status_code);
-                
+
                 if status_code == 200 {
                     // Injection hit - parse and return injection response
                     if body_size > 0 {
                         let response_body = self.get_http_call_response_body(0, body_size)
                             .unwrap_or_default();
                         log::info!("SP: Received {} bytes for injection", response_body.len());
-                        
+
                         // Parse the OTEL response and extract agentd HTTP response
                         match parse_otel_injection_response(&response_body) {
                             Ok(Some(injected_response)) => {
-                                log::debug!("SP: Successfully parsed injection response, status: {}, {} headers, {} bytes body", 
+                                log::debug!("SP: Successfully parsed injection response, status: {}, {} headers, {} bytes body",
                                     injected_response.status_code, injected_response.headers.len(), injected_response.body.len());
-                                
+
                                 // Convert headers to &str format
                                 let headers_refs: Vec<(&str, &str)> = injected_response.headers.iter()
                                     .map(|(k, v)| (k.as_str(), v.as_str()))
                                     .collect();
-                                
-                                // Send agentd response 
+
+                                // Send agentd response
                                 let body = if injected_response.body.is_empty() { None } else { Some(injected_response.body.as_slice()) };
                                 self.send_http_response(injected_response.status_code, headers_refs, body);
-                                
+
                                 log::info!("SP: Successfully injected response");
                                 return; // Don't resume - we've handled the response
                             }
@@ -297,7 +301,7 @@ impl Context for SpHttpContext {
                 } else {
                     log::info!("SP: No data for injection (status: {})", status_code);
                 }
-                
+
                 // Resume the paused request
                 self.resume_http_request();
             }
@@ -308,7 +312,7 @@ impl Context for SpHttpContext {
 impl HttpContext for SpHttpContext {
     fn on_http_request_headers(&mut self, _num_headers: usize, end_of_stream: bool) -> Action {
         log::debug!("SP: Processing request headers");
-        
+
         // Capture request headers
         for (key, value) in self.get_http_request_headers() {
             self.request_headers.insert(key, value);
@@ -318,7 +322,7 @@ impl HttpContext for SpHttpContext {
         let headers_clone = self.request_headers.clone();
         let span_builder = SpanBuilder::new().with_context(&headers_clone);
         self.span_builder = span_builder;
-        
+
         // If this is the end of the stream (no body), perform injection lookup now
         if end_of_stream {
             log::debug!("SP Injection: No request body, performing injection lookup immediately");
@@ -333,13 +337,13 @@ impl HttpContext for SpHttpContext {
                 }
             }
         }
-        
+
         Action::Continue
     }
 
     fn on_http_request_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
         log::debug!("SP: Processing request body, size: {}", body_size);
-        
+
         // Buffer request body
         if let Some(body) = self.get_http_request_body(0, body_size) {
             self.request_body.extend_from_slice(&body);
@@ -369,12 +373,12 @@ impl HttpContext for SpHttpContext {
         if self.injected {
             return Action::Continue
         }
-        
+
         // Capture response headers
         for (key, value) in self.get_http_response_headers() {
             self.response_headers.insert(key, value);
         }
-        
+
         Action::Continue
     }
 
@@ -385,7 +389,7 @@ impl HttpContext for SpHttpContext {
         if self.injected {
             return Action::Continue
         }
-        
+
         // Buffer response body
         if let Some(body) = self.get_http_response_body(0, body_size) {
             self.response_body.extend_from_slice(&body);
@@ -395,12 +399,11 @@ impl HttpContext for SpHttpContext {
             // Check if response is successful (200) using already captured headers
             if let Some(status) = self.response_headers.get(":status") {
                 if status == "200" {
-                    log::info!("SP: Successful response, storing in agent asynchronously");
-                    
-                    // Send to Softprobe asynchronously (fire and forget)
-                    if let Err(e) = self.dispatch_async_extraction_save() {
-                        log::error!("SP: Failed to store agent: {}", e);
-                    }
+                   log::info!("SP: Successful response, storing in agent asynchronously");
+                   // Send to Softprobe asynchronously (fire and forget)
+                   if let Err(e) = self.dispatch_async_extraction_save() {
+                       log::error!("SP: Failed to store agent: {}", e);
+                   }
                 } else {
                     log::info!("SP: Response status {} - not caching", status);
                 }
@@ -418,18 +421,18 @@ impl HttpContext for SpHttpContext {
 fn parse_otel_injection_response(response_body: &[u8]) -> Result<Option<AgentResponse>, String> {
     use prost::Message;
     use crate::otel::TracesData;
-    
+
     log::debug!("SP: Starting protobuf decode of {} bytes", response_body.len());
-    
+
     // Decode OTEL protobuf response
     let traces_data = TracesData::decode(response_body)
         .map_err(|e| {
             log::error!("SP: Protobuf decode failed: {}", e);
             format!("Serialization error: {}", e)
         })?;
-    
+
     log::debug!("SP: Successfully decoded protobuf, found {} resource spans", traces_data.resource_spans.len());
-    
+
     // Extract agentd HTTP response from span attributes
     for (i, resource_span) in traces_data.resource_spans.iter().enumerate() {
         log::debug!("SP: Processing resource span {}, found {} scope spans", i, resource_span.scope_spans.len());
@@ -441,7 +444,7 @@ fn parse_otel_injection_response(response_body: &[u8]) -> Result<Option<AgentRes
                 let mut status_code = 200u32;
                 let mut headers = Vec::new();
                 let mut body = Vec::new();
-                
+
                 for attr in &span.attributes {
                     match attr.key.as_str() {
                         "http.response.status_code" => {
@@ -476,10 +479,10 @@ fn parse_otel_injection_response(response_body: &[u8]) -> Result<Option<AgentRes
                         _ => {}
                     }
                 }
-                
+
                 // If we found response data, return it
                 if !body.is_empty() || !headers.is_empty() {
-                    log::info!("SP: Found agentd response data in span '{}': status={}, {} headers, {} byte body", 
+                    log::info!("SP: Found agentd response data in span '{}': status={}, {} headers, {} byte body",
                         span.name, status_code, headers.len(), body.len());
                     return Ok(Some(AgentResponse {
                         status_code,
@@ -492,7 +495,7 @@ fn parse_otel_injection_response(response_body: &[u8]) -> Result<Option<AgentRes
             }
         }
     }
-    
+
     log::debug!("SP: No agentd response found in any spans");
     Ok(None)
 }

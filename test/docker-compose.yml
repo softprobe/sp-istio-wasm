@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  envoy:
+    image: envoyproxy/envoy:v1.27-latest
+    container_name: test-envoy
+    volumes:
+      - ./envoy.yaml:/etc/envoy/envoy.yaml
+      - ../target/wasm32-unknown-unknown/release/sp_istio_agent.wasm:/etc/envoy/sp_istio_agent.wasm
+    ports:
+      - "18000:18000"
+      - "18001:18001"
+    depends_on:
+      - httpbin
+    networks:
+      - otel-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # 添加本地 HTTP 测试服务
+  httpbin:
+    image: kennethreitz/httpbin
+    container_name: httpbin
+    networks:
+      - otel-network
+
+networks:
+  otel-network:
+    driver: bridge

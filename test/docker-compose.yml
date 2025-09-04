@@ -1,29 +1,41 @@
 version: '3.8'
 
 services:
-  envoy:
+  # 应用服务 (dict-app)
+  dict-app:
+    image: dict-app
+    networks:
+      - service-network
+    environment:
+      # 显式配置代理
+      - HTTP_PROXY=http://envoy-dict-app:15001
+      - HTTPS_PROXY=http://envoy-dict-app:15001
+      - http_proxy=http://envoy-dict-app:15001
+      - https_proxy=http://envoy-dict-app:15001
+    ports:
+      - "8080:80"
+    # 如果您希望入站流量也经过 Envoy，可以在应用中显式调用
+    # 例如：curl http://envoy-dict-app:15006/your-endpoint
+
+  # dict-app 的 Envoy sidecar
+  envoy-dict-app:
     image: envoyproxy/envoy:v1.27-latest
-    container_name: test-envoy
     volumes:
       - ./envoy2.yaml:/etc/envoy/envoy.yaml
       - ../target/wasm32-unknown-unknown/release/sp_istio_agent.wasm:/etc/envoy/sp_istio_agent.wasm
-    ports:
-      - "18000:18000"
-      - "18001:18001"
-    depends_on:
-      - httpbin
     networks:
-      - otel-network
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - service-network
+    ports:
+      - "15001:15001"  # 出站流量
+      - "15006:15006"  # 入站流量
 
-  # 添加本地 HTTP 测试服务
+  # httpbin 服务
   httpbin:
     image: kennethreitz/httpbin
     container_name: httpbin
     networks:
-      - otel-network
+      - service-network
 
 networks:
-  otel-network:
+  service-network:
     driver: bridge

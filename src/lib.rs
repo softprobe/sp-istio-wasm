@@ -126,7 +126,7 @@ impl RootContext for SpRootContext {
                                         }),
                                     });
 
-                                    
+
                                 }
                             }
                         }
@@ -151,6 +151,18 @@ struct SpHttpContext {
 }
 
 impl SpHttpContext {
+    fn process_inbound_path(&mut self) {
+        // 先获取路径值的克隆
+        let path = self.request_headers.get(":path").cloned();
+
+        if self.config.traffic_direction == "inbound" {
+            if let Some(path) = path {
+                // 现在使用克隆后的值进行插入操作
+                self.request_headers.insert("x-inbound-path".to_string(), path);
+            }
+        }
+    }
+
     fn new(context_id: u32, config: Config) -> Self {
         Self {
             context_id,
@@ -165,6 +177,7 @@ impl SpHttpContext {
         }
     }
 
+    // ... existing code ...
     fn should_collect_by_rules(&self) -> bool {
         // 如果没有配置规则，则默认采集所有请求
         if self.config.collection_rules.is_empty() {
@@ -195,20 +208,31 @@ impl SpHttpContext {
             }
             "outbound" => {
                 // Client 流量：需要匹配 server_path、client_host 和 client_paths
-                let (client_host, client_path) = self.extract_client_info();
+                let (client_host, client_path, server_path) = self.extract_client_info();
+
+                // 如果没有 server_path（即没有 x-inbound-path 头部），则检查是否至少有一条规则的 server_path 能匹配当前 outbound 路径
+                // 如果没有任何规则匹配，则默认收集所有请求
+                let mut has_applicable_rules = false;
 
                 for (i, rule) in self.config.collection_rules.iter().enumerate() {
                     if let Some(http_rule) = &rule.http {
+                        has_applicable_rules = true;
+
                         log::debug!("SP: Checking outbound rule {}: serverPath='{}', clientHost={:?}, clientPaths={:?}",
                                    i, http_rule.server_path, http_rule.client_host, http_rule.client_paths);
 
-                        // 检查 server_path
-                        /*if !self.match_pattern(&http_rule.server_path, request_path) {
-                            log::info!("SP: Server path did not match");
+                        // 检查 server_path (即原始 inbound 请求的路径)
+                        if let Some(server_path_str) = &server_path {
+                            if !self.match_pattern(&http_rule.server_path, server_path_str) {
+                                log::info!("SP: Server path did not match");
+                                continue;
+                            }
+                        } else {
+                            log::info!("SP: No server path available");
                             continue;
                         }
 
-                        log::info!("SP: Server path matched: {}", http_rule.server_path);*/
+                        log::info!("SP: Server path matched: {}", http_rule.server_path);
 
                         // 检查 client_host（如果配置了）
                         if let Some(ref expected_client_host) = http_rule.client_host {
@@ -259,6 +283,15 @@ impl SpHttpContext {
                         return true;
                     }
                 }
+
+                // 如果没有任何适用的规则，默认收集请求
+                if !has_applicable_rules {
+                    log::info!("SP: No applicable rules found for outbound traffic, collecting all requests");
+                    return true;
+                }
+
+                // 如果有适用的规则但都不匹配，则不收集
+                log::info!("SP: No outbound rules matched, not collecting");
                 return false;
             }
             _ => {
@@ -274,9 +307,10 @@ impl SpHttpContext {
     }
 
     // 提取客户端信息
-    fn extract_client_info(&self) -> (Option<String>, Option<String>) {
+    fn extract_client_info(&self) -> (Option<String>, Option<String>, Option<String>) {
         let mut client_host = None;
         let mut client_path = None;
+        let mut server_path = None;
 
         log::info!("SP: Extracting client info from headers:");
         for (key, value) in &self.request_headers {
@@ -344,8 +378,13 @@ impl SpHttpContext {
                 client_host.get_or_insert(first_ip.trim().to_string());
             }
         }
-        log::info!("SP: Final client info - host: {:?}, path: {:?}", client_host, client_path);
-        (client_host, client_path)
+        // 提取自定义的 X-Inbound-Path 头部
+        if let Some(inbound_path) = self.request_headers.get("x-inbound-path") {
+            server_path = Some(inbound_path.clone());
+            log::info!("SP: Using inbound path from header: {}", inbound_path);
+        }
+        log::info!("SP: Final client info - host: {:?}, path: {:?}，server_path: {:?}", client_host, client_path, server_path);
+        (client_host, client_path, server_path)
     }
 
     // 使用正则表达式匹配
@@ -500,6 +539,7 @@ impl SpHttpContext {
 }
 
 impl Context for SpHttpContext {
+
     fn on_http_call_response(&mut self, token_id: u32, _num_headers: usize, body_size: usize, _num_trailers: usize) {
         log::info!("SP: *** HTTP CALL RESPONSE RECEIVED *** token: {}, body_size: {}", token_id, body_size);
         log::info!("SP: pending_inject_call_token = {:?}", self.pending_inject_call_token);
@@ -568,6 +608,7 @@ impl Context for SpHttpContext {
 impl HttpContext for SpHttpContext {
     fn on_http_request_headers(&mut self, _num_headers: usize, end_of_stream: bool) -> Action {
         log::info!("SP: Processing request headers");
+        self.process_inbound_path(); // 新增调用
 
         // Capture request headers
         for (key, value) in self.get_http_request_headers() {

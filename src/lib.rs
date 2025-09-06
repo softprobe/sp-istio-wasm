@@ -8,16 +8,28 @@ mod otel;
 
 use crate::otel::{SpanBuilder, serialize_traces_data};
 
-#[derive(Debug, Clone)]
-pub struct HttpCollectionRule {
-    pub server_path: String,
-    pub client_host: Option<String>,
-    pub client_paths: Vec<String>,
-}
 
 #[derive(Debug, Clone)]
 pub struct CollectionRule {
-    pub http: Option<HttpCollectionRule>,
+    pub http: HttpCollectionRule,
+}
+
+
+#[derive(Debug, Clone)]
+pub struct HttpCollectionRule {
+    pub server: ServerConfig,
+    pub client: Vec<ClientConfig>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ServerConfig {
+    pub path: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientConfig {
+    pub host: String,
+    pub paths: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -100,35 +112,71 @@ impl RootContext for SpRootContext {
                     }
 
                     // 解析 collectionRules
-                    if let Some(rules) = config_json.get("collectionRules").and_then(|v| v.as_array()) {
-                        for rule in rules {
-                            if let Some(http_rule) = rule.get("http") {
-                                if let Some(server_path) = http_rule.get("serverPath").and_then(|v| v.as_str()) {
-                                    // 解析 clientHost（可选）
-                                    let client_host = http_rule.get("clientHost").and_then(|v| v.as_str()).map(|s| s.to_string());
-
-                                    // 解析 clientPaths（可选）
-                                    let mut client_paths = Vec::new();
-                                    if let Some(paths) = http_rule.get("clientPaths").and_then(|v| v.as_array()) {
-                                        for path in paths {
-                                            if let Some(path_str) = path.as_str() {
-                                                client_paths.push(path_str.to_string());
-                                            }
-                                        }
+                    if let Some(rules) = config_json.get("collectionRules") {
+                        // 解析 server paths
+                        let mut server_paths = Vec::new();
+                        if let Some(server_obj) = rules.get("http").and_then(|v| v.get("server")) {
+                            if let Some(server_array) = server_obj.as_array() {
+                                for server_entry in server_array {
+                                    if let Some(path) = server_entry.get("path").and_then(|v| v.as_str()) {
+                                        server_paths.push(path.to_string());
                                     }
-                                    log::info!("SP: Added collection rule - serverPath: {}, clientHost: {:?}, clientPaths: {:?}", 
-                                              server_path, client_host, client_paths);
-                                    self.config.collection_rules.push(CollectionRule {
-                                        http: Some(HttpCollectionRule {
-                                            server_path: server_path.to_string(),
-                                            client_host,
-                                            client_paths,
-                                        }),
-                                    });
-
-
                                 }
                             }
+                        }
+
+                        // 解析 client configs
+                        let mut client_configs = Vec::new();
+                        if let Some(client_obj) = rules.get("http").and_then(|v| v.get("client")) {
+                            if let Some(client_array) = client_obj.as_array() {
+                                for client_entry in client_array {
+                                    if let Some(host) = client_entry.get("host").and_then(|v| v.as_str()) {
+                                        let mut paths = Vec::new();
+                                        if let Some(paths_obj) = client_entry.get("paths") {
+                                            if let Some(paths_array) = paths_obj.as_array() {
+                                                for path_entry in paths_array {
+                                                    if let Some(path) = path_entry.as_str() {
+                                                        paths.push(path.to_string());
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        client_configs.push((host.to_string(), paths));
+                                    }
+                                }
+                            }
+                        }
+
+                        // 为每个 server_path 创建独立的规则
+                        for server_path in server_paths {
+                            log::info!("SP: Added server collection rule - serverPath: {}", server_path);
+                            self.config.collection_rules.push(CollectionRule {
+                                http: HttpCollectionRule {
+                                    server: ServerConfig {
+                                        path: server_path.to_string(),
+                                    },
+                                    client: vec![], // 没有客户端配置
+                                },
+                            });
+                        }
+
+                        // 为每个 client 配置创建独立的规则
+                        for (client_host, client_paths) in &client_configs {
+                            log::info!("SP: Added client collection rule - clientHost: {}, clientPaths: {:?}",
+                                      client_host, client_paths);
+                            self.config.collection_rules.push(CollectionRule {
+                                http: HttpCollectionRule {
+                                    server: ServerConfig {
+                                        path: String::new(), // 空字符串表示这是客户端规则
+                                    },
+                                    client: vec![
+                                        ClientConfig {
+                                            host: client_host.clone(),
+                                            paths: client_paths.clone(),
+                                        }
+                                    ],
+                                },
+                            });
                         }
                     }
                 }
@@ -136,6 +184,7 @@ impl RootContext for SpRootContext {
         }
         true
     }
+
 }
 
 struct SpHttpContext {
@@ -151,17 +200,6 @@ struct SpHttpContext {
 }
 
 impl SpHttpContext {
-    fn process_inbound_path(&mut self) {
-        // 先获取路径值的克隆
-        let path = self.request_headers.get(":path").cloned();
-
-        if self.config.traffic_direction == "inbound" {
-            if let Some(path) = path {
-                // 现在使用克隆后的值进行插入操作
-                self.request_headers.insert("x-inbound-path".to_string(), path);
-            }
-        }
-    }
 
     fn new(context_id: u32, config: Config) -> Self {
         Self {
@@ -177,7 +215,6 @@ impl SpHttpContext {
         }
     }
 
-    // ... existing code ...
     fn should_collect_by_rules(&self) -> bool {
         // 如果没有配置规则，则默认采集所有请求
         if self.config.collection_rules.is_empty() {
@@ -193,10 +230,11 @@ impl SpHttpContext {
                     // Server 流量：只匹配 server_path
                     log::debug!("SP: Processing inbound traffic rules, request_path: {}", request_path);
                     for (i, rule) in self.config.collection_rules.iter().enumerate() {
-                        if let Some(http_rule) = &rule.http {
-                            log::debug!("SP: Checking inbound rule {}: serverPath='{}'", i, http_rule.server_path);
-                            if self.match_pattern(&http_rule.server_path, request_path) {
-                                log::info!("SP: Inbound request matched server_path: {}", http_rule.server_path);
+                        // 检查规则是否为服务器规则（path不为空）
+                        if !rule.http.server.path.is_empty() {
+                            log::debug!("SP: Checking inbound rule {}: serverPath='{}'", i, rule.http.server.path);
+                            if self.match_pattern(&rule.http.server.path, request_path) {
+                                log::info!("SP: Inbound request matched server_path: {}", rule.http.server.path);
                                 return true;
                             }
                         }
@@ -207,92 +245,71 @@ impl SpHttpContext {
 
             }
             "outbound" => {
-                // Client 流量：需要匹配 server_path、client_host 和 client_paths
-                let (client_host, client_path, server_path) = self.extract_client_info();
-
-                // 如果没有 server_path（即没有 x-inbound-path 头部），则检查是否至少有一条规则的 server_path 能匹配当前 outbound 路径
-                // 如果没有任何规则匹配，则默认收集所有请求
-                let mut has_applicable_rules = false;
+                // Client 流量：需要匹配 client_host 和 client_paths
+                let (client_host, client_path) = self.extract_client_info();
 
                 for (i, rule) in self.config.collection_rules.iter().enumerate() {
-                    if let Some(http_rule) = &rule.http {
-                        has_applicable_rules = true;
+                    // 处理客户端规则（检查client数组不为空）
+                    if !rule.http.client.is_empty() {
+                        for client_config in &rule.http.client {
+                            log::debug!("SP: Checking outbound rule {}: clientHost={}, clientPaths={:?}",
+                                       i, client_config.host, client_config.paths);
 
-                        log::debug!("SP: Checking outbound rule {}: serverPath='{}', clientHost={:?}, clientPaths={:?}",
-                                   i, http_rule.server_path, http_rule.client_host, http_rule.client_paths);
-
-                        // 检查 server_path (即原始 inbound 请求的路径)
-                        if let Some(server_path_str) = &server_path {
-                            if !self.match_pattern(&http_rule.server_path, server_path_str) {
-                                log::info!("SP: Server path did not match");
-                                continue;
-                            }
-                        } else {
-                            log::info!("SP: No server path available");
-                            continue;
-                        }
-
-                        log::info!("SP: Server path matched: {}", http_rule.server_path);
-
-                        // 检查 client_host（如果配置了）
-                        if let Some(ref expected_client_host) = http_rule.client_host {
-                            log::debug!("SP: Rule requires client host: {}", expected_client_host);
+                            // 检查 client_host
                             if let Some(ref actual_client_host) = client_host {
-                                if !self.match_pattern(expected_client_host, actual_client_host) {
+                                if !self.match_pattern(&client_config.host, actual_client_host) {
                                     log::debug!("SP: Client host did not match: expected={}, actual={}",
-                                               expected_client_host, actual_client_host);
+                                               client_config.host, actual_client_host);
                                     continue;
                                 }
                             } else {
                                 log::debug!("SP: No client host info available, but rule requires it");
-                                continue; // 没有客户端主机信息
-                            }
-                        } else {
-                            log::debug!("SP: Rule does not require client host");
-                        }
-
-                        log::debug!("SP: Client host matched or not required");
-
-                        // 检查 client_paths（如果配置了）
-                        if !http_rule.client_paths.is_empty() {
-                            log::debug!("SP: Rule requires client paths: {:?}", http_rule.client_paths);
-                            let client_path_matched = if let Some(ref actual_client_path) = client_path {
-                                let matched = http_rule.client_paths.iter().any(|client_path| {
-                                    let matches = self.match_pattern(client_path, actual_client_path);
-                                    log::debug!("SP: Client path match check: pattern='{}', text='{}', result={}",
-                                               client_path, actual_client_path, matches);
-                                    matches
-                                });
-                                log::debug!("SP: Client path matched any: {}", matched);
-                                matched
-                            } else {
-                                log::debug!("SP: No client path info available");
-                                false
-                            };
-
-                            if !client_path_matched {
-                                log::info!("SP: Client paths did not match");
                                 continue;
                             }
-                        } else {
-                            log::info!("SP: Rule does not require client paths");
-                        }
 
-                        log::info!("SP: Outbound request matched all criteria - server_path: {}, client_host: {:?}, client_paths: {:?}",
-                                  http_rule.server_path, http_rule.client_host, http_rule.client_paths);
-                        return true;
+                            log::debug!("SP: Client host matched");
+
+                            // 检查 client_paths（如果配置了）
+                            if !client_config.paths.is_empty() {
+                                log::debug!("SP: Rule requires client paths: {:?}", client_config.paths);
+                                let client_path_matched = if let Some(ref actual_client_path) = client_path {
+                                    let matched = client_config.paths.iter().any(|client_path| {
+                                        let matches = self.match_pattern(client_path, actual_client_path);
+                                        log::debug!("SP: Client path match check: pattern='{}', text='{}', result={}",
+                                                   client_path, actual_client_path, matches);
+                                        matches
+                                    });
+                                    log::debug!("SP: Client path matched any: {}", matched);
+                                    matched
+                                } else {
+                                    log::debug!("SP: No client path info available");
+                                    false
+                                };
+
+                                if !client_path_matched {
+                                    log::info!("SP: Client paths did not match");
+                                    continue;
+                                }
+                            } else {
+                                log::info!("SP: Rule does not require client paths");
+                            }
+
+                            log::info!("SP: Outbound request matched all criteria - client_host: {}, client_paths: {:?}",
+                                      client_config.host, client_config.paths);
+                            return true;
+                        }
                     }
                 }
 
-                // 如果没有任何适用的规则，默认收集请求
-                if !has_applicable_rules {
-                    log::info!("SP: No applicable rules found for outbound traffic, collecting all requests");
+                // 检查是否有任何适用的客户端规则
+                let has_client_rules = self.config.collection_rules.iter().any(|rule| !rule.http.client.is_empty());
+                if has_client_rules {
+                    log::info!("SP: No outbound rules matched, not collecting");
+                    return false;
+                } else {
+                    log::info!("SP: No client rules configured, collecting all outbound requests");
                     return true;
                 }
-
-                // 如果有适用的规则但都不匹配，则不收集
-                log::info!("SP: No outbound rules matched, not collecting");
-                return false;
             }
             _ => {
                 log::warn!("SP: Unknown traffic direction: {}", self.config.traffic_direction);
@@ -306,11 +323,11 @@ impl SpHttpContext {
         false
     }
 
+
     // 提取客户端信息
-    fn extract_client_info(&self) -> (Option<String>, Option<String>, Option<String>) {
+    fn extract_client_info(&self) -> (Option<String>, Option<String>) {
         let mut client_host = None;
         let mut client_path = None;
-        let mut server_path = None;
 
         log::info!("SP: Extracting client info from headers:");
         for (key, value) in &self.request_headers {
@@ -342,14 +359,6 @@ impl SpHttpContext {
             }
         }
 
-        // 从 X-Forwarded-Host 头部提取（作为备选）
-        if client_host.is_none() {
-            if let Some(x_host) = self.request_headers.get("x-forwarded-host") {
-                log::info!("SP: Found x-forwarded-host header: {}", x_host);
-                client_host = Some(x_host.clone());
-            }
-        }
-
         // 从 Host 头部提取（作为备选）
         if client_host.is_none() {
             if let Some(host) = self.request_headers.get("host") {
@@ -372,19 +381,8 @@ impl SpHttpContext {
         // 直接从请求路径获取客户端路径
         client_path = self.request_headers.get(":path").cloned();
 
-        // 尝试从 X-Forwarded-For 获取原始客户端IP（如果有代理层）
-        if let Some(xff) = self.request_headers.get("x-forwarded-for") {
-            if let Some(first_ip) = xff.split(',').next() {
-                client_host.get_or_insert(first_ip.trim().to_string());
-            }
-        }
-        // 提取自定义的 X-Inbound-Path 头部
-        if let Some(inbound_path) = self.request_headers.get("x-inbound-path") {
-            server_path = Some(inbound_path.clone());
-            log::info!("SP: Using inbound path from header: {}", inbound_path);
-        }
-        log::info!("SP: Final client info - host: {:?}, path: {:?}，server_path: {:?}", client_host, client_path, server_path);
-        (client_host, client_path, server_path)
+        log::info!("SP: Final client info - host: {:?}, path: {:?}", client_host, client_path);
+        (client_host, client_path)
     }
 
     // 使用正则表达式匹配
@@ -608,7 +606,6 @@ impl Context for SpHttpContext {
 impl HttpContext for SpHttpContext {
     fn on_http_request_headers(&mut self, _num_headers: usize, end_of_stream: bool) -> Action {
         log::info!("SP: Processing request headers");
-        self.process_inbound_path(); // 新增调用
 
         // Capture request headers
         for (key, value) in self.get_http_request_headers() {

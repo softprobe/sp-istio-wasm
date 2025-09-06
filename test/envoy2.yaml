@@ -46,8 +46,7 @@ static_resources:
                               "collectionRules": {
                                 "http": {
                                   "server": [
-                                    { "path": "/test/1" },
-                                    { "path": "/test/2" }
+                                    { "path": "/test/1" }
                                   ],
                                   "client": []
                                 }
@@ -100,18 +99,25 @@ static_resources:
                             {
                               "traffic_direction": "outbound",
                               "sp_backend_url": "http://host.docker.internal:8081",
-                              "enable_inject": true,
+                              "enable_inject": false,
                               "collectionRules": {
                                 "http": {
                                   "server": [],
                                   "client": [
                                     {
                                       "host": "httpbin.org",
-                                      "paths": ["/delay/1"]
+                                      "paths": ["/delay/11"]
+                                    },
+                                    {
+                                      "host": "httpbin.org",
+                                      "paths": ["/delay/12"]
+                                    },{
+                                      "host": "httpbin",
+                                      "paths": ["/delay/11"]
                                     },
                                     {
                                       "host": "httpbin",
-                                      "paths": ["/delay/1"]
+                                      "paths": ["/delay/12"]
                                     }
                                   ]
                                 }

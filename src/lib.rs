@@ -329,11 +329,6 @@ impl SpHttpContext {
         let mut client_host = None;
         let mut client_path = None;
 
-        log::info!("SP: Extracting client info from headers:");
-        for (key, value) in &self.request_headers {
-            log::info!("SP:   {}: {}", key, value);
-        }
-
         // 从 Referer 头部提取
         if let Some(referer) = self.request_headers.get("referer") {
             log::info!("SP: Found referer header: {}", referer);
@@ -431,10 +426,6 @@ impl SpHttpContext {
     fn dispatch_injection_lookup(&mut self) -> Result<u32, String> {
         if !self.config.enable_inject {
             return Err("Injection is not allowed".to_string());
-        }
-        // 检查采集规则
-        if !self.should_collect_by_rules() {
-            return Err("Request does not match collection rules".to_string());
         }
 
         log::info!("SP Injection: Preparing injection lookup data");

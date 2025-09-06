@@ -106,18 +106,14 @@ static_resources:
                                   "client": [
                                     {
                                       "host": "httpbin.org",
-                                      "paths": ["/delay/11"]
+                                      "paths": ["/delay/1"]
                                     },
                                     {
                                       "host": "httpbin.org",
-                                      "paths": ["/delay/12"]
+                                      "paths": ["/delay/2"]
                                     },{
                                       "host": "httpbin",
-                                      "paths": ["/delay/11"]
-                                    },
-                                    {
-                                      "host": "httpbin",
-                                      "paths": ["/delay/12"]
+                                      "paths": ["/delay/3"]
                                     }
                                   ]
                                 }

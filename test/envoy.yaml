@@ -39,8 +39,7 @@ static_resources:
                           "@type": type.googleapis.com/google.protobuf.StringValue
                           value: |
                             {
-                              "sp_backend_url": "http://host.docker.internal:8081",
-                              "enable_inject": false
+                              "sp_backend_url": "https://o.softprobe.ai"
                             }
 
                   - name: envoy.filters.http.router
@@ -58,8 +57,13 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: httpbin
-                      port_value: 80
+                      address: httpbin.org
+                      port_value: 443
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          sni: httpbin.org
 
     # The following cluster configure is required and cannot be changed.
     - name: sp_backend
@@ -73,9 +77,13 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: host.docker.internal
-                      port_value: 8081
-
+                      address: o.softprobe.ai
+                      port_value: 443
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          sni: o.softprobe.ai
 
 admin:
   address:

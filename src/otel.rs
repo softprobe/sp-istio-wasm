@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 // Note: SystemTime is not available in WASM runtime, will use proxy-wasm host functions
 use prost::Message;
+use proxy_wasm;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 // Include generated protobuf types
 pub mod opentelemetry {
@@ -302,13 +304,24 @@ fn hex_decode(hex: &str) -> Option<Vec<u8>> {
 }
 
 fn get_current_timestamp_nanos() -> u64 {
-    // In WASM environment, we can't use SystemTime::now()
-    // Use a simple counter-based approach for timestamp generation
-    static mut TIMESTAMP_COUNTER: u64 = 1609459200000000000_u64; // Start at Jan 1, 2021
-    
-    unsafe {
-        TIMESTAMP_COUNTER += 1000000; // Increment by 1ms each call
-        TIMESTAMP_COUNTER
+    match proxy_wasm::hostcalls::get_current_time() {
+        Ok(system_time) => {
+            // 将SystemTime转换为纳秒数
+            system_time.duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos() as u64)
+                .unwrap_or_else(|_| {
+                    // 如果system_time早于UNIX_EPOCH，则使用fallback
+                    use std::sync::atomic::{AtomicU64, Ordering};
+                    static TIMESTAMP_COUNTER: AtomicU64 = AtomicU64::new(1609459200000000000_u64); // Start at Jan 1, 2021
+                    TIMESTAMP_COUNTER.fetch_add(1000000, Ordering::Relaxed)
+                })
+        },
+        Err(_) => {
+            // Fallback to counter-based approach if host function fails
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static TIMESTAMP_COUNTER: AtomicU64 = AtomicU64::new(1609459200000000000_u64); // Start at Jan 1, 2021
+            TIMESTAMP_COUNTER.fetch_add(1000000, Ordering::Relaxed)
+        }
     }
 }
 

@@ -224,6 +224,7 @@ impl SpHttpContext {
         // 根据流量方向应用不同规则
         match self.config.traffic_direction.as_str() {
             "inbound" => {
+                log::info!("SP: process inbound");
                 if let Some(request_path) = self.request_headers.get(":path") {
                     // 获取当前请求路径
                     log::debug!("SP: Checking collection rules for path: {}, traffic_direction: {}",request_path, self.config.traffic_direction);
@@ -234,7 +235,7 @@ impl SpHttpContext {
                         if !rule.http.server.path.is_empty() {
                             log::debug!("SP: Checking inbound rule {}: serverPath='{}'", i, rule.http.server.path);
                             if self.match_pattern(&rule.http.server.path, request_path) {
-                                log::info!("SP: Inbound request matched server_path: {}", rule.http.server.path);
+                                log::debug!("SP: Inbound request matched server_path: {}", rule.http.server.path);
                                 return true;
                             }
                         }
@@ -245,6 +246,7 @@ impl SpHttpContext {
 
             }
             "outbound" => {
+                log::info!("SP: process outbound");
                 // Client 流量：需要匹配 client_host 和 client_paths
                 let (client_host, client_path) = self.extract_client_info();
 
@@ -596,7 +598,7 @@ impl Context for SpHttpContext {
 
 impl HttpContext for SpHttpContext {
     fn on_http_request_headers(&mut self, _num_headers: usize, end_of_stream: bool) -> Action {
-        log::info!("SP: Processing request headers");
+        log::debug!("SP: Processing request headers");
 
         // Capture request headers
         for (key, value) in self.get_http_request_headers() {
@@ -627,7 +629,7 @@ impl HttpContext for SpHttpContext {
     }
 
     fn on_http_request_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
-        log::info!("SP: Processing request body, size: {}", body_size);
+        log::debug!("SP: Processing request body, size: {}", body_size);
 
         // Buffer request body
         if let Some(body) = self.get_http_request_body(0, body_size) {
@@ -652,7 +654,7 @@ impl HttpContext for SpHttpContext {
     }
 
     fn on_http_response_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
-        log::info!("SP: Processing response headers");
+        log::debug!("SP: Processing response headers");
 
         // Don't extract injected data
         if self.injected {
@@ -668,7 +670,7 @@ impl HttpContext for SpHttpContext {
     }
 
     fn on_http_response_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
-        log::info!("SP: Processing response body, size: {}", body_size);
+        log::debug!("SP: Processing response body, size: {}", body_size);
 
         // Don't extract injected data
         if self.injected {
@@ -684,13 +686,13 @@ impl HttpContext for SpHttpContext {
             // Check if response is successful (200) using already captured headers
             if let Some(status) = self.response_headers.get(":status") {
                 if status == "200" {
-                    log::info!("SP: Successful response, storing in agent asynchronously");
+                    log::debug!("SP: Successful response, storing in agent asynchronously");
                     // Send to Softprobe asynchronously (fire and forget)
                     if let Err(e) = self.dispatch_async_extraction_save() {
                         log::error!("SP: Failed to store agent: {}", e);
                     }
                 } else {
-                    log::info!("SP: Response status {} - not caching", status);
+                    log::debug!("SP: Response status {} - not caching", status);
                 }
             } else {
                 log::warn!("SP: No :status header found in response");
@@ -719,11 +721,11 @@ fn parse_otel_injection_response(response_body: &[u8]) -> Result<Option<AgentRes
 
     // Extract agentd HTTP response from span attributes
     for (i, resource_span) in traces_data.resource_spans.iter().enumerate() {
-        log::info!("SP: Processing resource span {}, found {} scope spans", i, resource_span.scope_spans.len());
+        log::debug!("SP: Processing resource span {}, found {} scope spans", i, resource_span.scope_spans.len());
         for (j, scope_span) in resource_span.scope_spans.iter().enumerate() {
-            log::info!("SP: Processing scope span {}, found {} spans", j, scope_span.spans.len());
+            log::debug!("SP: Processing scope span {}, found {} spans", j, scope_span.spans.len());
             for (k, span) in scope_span.spans.iter().enumerate() {
-                log::info!("SP: Processing span {}, name: '{}', {} attributes", k, span.name, span.attributes.len());
+                log::debug!("SP: Processing span {}, name: '{}', {} attributes", k, span.name, span.attributes.len());
                 // Look for agentd response data in span attributes
                 let mut status_code = 200u32;
                 let mut headers = Vec::new();

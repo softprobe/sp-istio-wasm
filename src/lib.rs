@@ -36,6 +36,7 @@ pub struct ClientConfig {
 pub struct Config {
     pub sp_backend_url: String,
     pub enable_inject: bool,
+    pub service_name: String,       // 添加service_name字段
     pub traffic_direction: String,  // "inbound" 或 "outbound"
     pub collection_rules: Vec<CollectionRule>,
 }
@@ -46,6 +47,7 @@ impl Default for Config {
             sp_backend_url: "http://o.softprobe.ai".to_string(),
             enable_inject: false,
             traffic_direction: "outbound".to_string(),
+            service_name: "default-service".to_string(), // 默认服务名
             collection_rules: vec![],
         }
     }
@@ -109,6 +111,12 @@ impl RootContext for SpRootContext {
                     if let Some(direction) = config_json.get("traffic_direction").and_then(|v| v.as_str()) {
                         self.config.traffic_direction = direction.to_string();
                         log::info!("SP: Configured traffic direction: {}", self.config.traffic_direction);
+                    }
+
+                    // 解析 service_name
+                    if let Some(service_name) = config_json.get("service_name").and_then(|v| v.as_str()) {
+                        self.config.service_name = service_name.to_string();
+                        log::info!("SP: Configured service name: {}", self.config.service_name);
                     }
 
                     // 解析 collectionRules
@@ -200,18 +208,22 @@ struct SpHttpContext {
 }
 
 impl SpHttpContext {
-
     fn new(context_id: u32, config: Config) -> Self {
+        let mut span_builder = SpanBuilder::new();
+        span_builder = span_builder
+            .with_service_name(config.service_name.clone())
+            .with_traffic_direction(config.traffic_direction.clone());
         Self {
+            config: config,
             context_id,
             request_headers: HashMap::new(),
             request_body: Vec::new(),
             response_headers: HashMap::new(),
             response_body: Vec::new(),
-            span_builder: SpanBuilder::new(),
+            span_builder: span_builder,
             pending_inject_call_token: None,
             injected: false,
-            config,
+
         }
     }
 
@@ -605,9 +617,14 @@ impl HttpContext for SpHttpContext {
             self.request_headers.insert(key, value);
         }
 
+        let traffic_direction = self.config.traffic_direction.clone() ;
+        let service_name = self.config.service_name.clone();
         // Update span builder with trace context
         let headers_clone = self.request_headers.clone();
-        let span_builder = SpanBuilder::new().with_context(&headers_clone);
+        let span_builder = SpanBuilder::new()
+            .with_service_name(service_name)
+            .with_traffic_direction(traffic_direction)
+            .with_context(&headers_clone);
         self.span_builder = span_builder;
 
         // If this is the end of the stream (no body), perform injection lookup now

@@ -33,6 +33,8 @@ pub use opentelemetry::proto::trace::v1::{TracesData, ResourceSpans, ScopeSpans,
 pub struct SpanBuilder {
     trace_id: Vec<u8>,
     parent_span_id: Option<Vec<u8>>,
+    service_name: String,
+    traffic_direction: String,  // 添加traffic_direction字段
 }
 
 impl SpanBuilder {
@@ -40,7 +42,20 @@ impl SpanBuilder {
         Self {
             trace_id: generate_trace_id(),
             parent_span_id: None,
+            service_name: "default-service".to_string(),
+            traffic_direction: "outbound".to_string(),  // 默认值
         }
+    }
+    // 添加设置service_name的方法
+    pub fn with_service_name(mut self, service_name: String) -> Self {
+        self.service_name = service_name;
+        self
+    }
+
+    // 添加设置traffic_direction的方法
+    pub fn with_traffic_direction(mut self, traffic_direction: String) -> Self {
+        self.traffic_direction = traffic_direction;
+        self
     }
 
     pub fn with_context(mut self, headers: &HashMap<String, String>) -> Self {
@@ -63,7 +78,29 @@ impl SpanBuilder {
     pub fn create_inject_span(&self, request_headers: &HashMap<String, String>, request_body: &[u8]) -> TracesData {
         let span_id = generate_span_id();
         let mut attributes = Vec::new();
-        
+
+        // Add service name attribute
+        let service_name = if self.service_name.is_empty() {
+            "default-service".to_string()
+        } else {
+            self.service_name.clone()
+        };
+
+        attributes.push(KeyValue {
+            key: "sp.service.name".to_string(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue(service_name)),
+            }),
+        });
+
+        // Add traffic direction attribute
+        attributes.push(KeyValue {
+            key: "sp.traffic.direction".to_string(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue(self.traffic_direction.clone())),
+            }),
+        });
+
         // Add span type attribute
         attributes.push(KeyValue {
             key: "sp.span.type".to_string(),
@@ -126,7 +163,22 @@ impl SpanBuilder {
     ) -> TracesData {
         let span_id = generate_span_id();
         let mut attributes = Vec::new();
-        
+
+        attributes.push(KeyValue {
+            key: "sp.service.name".to_string(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue(self.service_name.clone())),
+            }),
+        });
+        log::info!("service_name: {:?}", self.service_name.clone());
+        // Add traffic direction attribute
+        attributes.push(KeyValue {
+            key: "sp.traffic.direction".to_string(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue(self.traffic_direction.clone())),
+            }),
+        });
+        log::info!("traffic_direction: {:?}", self.traffic_direction.clone());
         // Add span type attribute
         attributes.push(KeyValue {
             key: "sp.span.type".to_string(),
@@ -134,7 +186,7 @@ impl SpanBuilder {
                 value: Some(any_value::Value::StringValue("extract".to_string())),
             }),
         });
-        
+
         // Add request headers
         for (key, value) in request_headers {
             if !should_skip_header(key) {
@@ -146,7 +198,7 @@ impl SpanBuilder {
                 });
             }
         }
-        
+
         // Add request body
         if !request_body.is_empty() {
             let body_value = if is_text_content(request_headers) {
@@ -155,7 +207,7 @@ impl SpanBuilder {
                 use base64::{Engine as _, engine::general_purpose};
                 general_purpose::STANDARD.encode(request_body)
             };
-            
+
             attributes.push(KeyValue {
                 key: "http.request.body".to_string(),
                 value: Some(AnyValue {
@@ -163,7 +215,7 @@ impl SpanBuilder {
                 }),
             });
         }
-        
+
         // Add response headers
         for (key, value) in response_headers {
             if !should_skip_header(key) {
@@ -175,7 +227,7 @@ impl SpanBuilder {
                 });
             }
         }
-        
+
         // Add response status code
         if let Some(status) = response_headers.get(":status") {
             if let Ok(status_code) = status.parse::<i64>() {
@@ -187,7 +239,7 @@ impl SpanBuilder {
                 });
             }
         }
-        
+
         // Add response body
         if !response_body.is_empty() {
             let body_value = if is_text_content(response_headers) {
@@ -196,7 +248,7 @@ impl SpanBuilder {
                 use base64::{Engine as _, engine::general_purpose};
                 general_purpose::STANDARD.encode(response_body)
             };
-            
+
             attributes.push(KeyValue {
                 key: "http.response.body".to_string(),
                 value: Some(AnyValue {
@@ -204,7 +256,7 @@ impl SpanBuilder {
                 }),
             });
         }
-        
+
         let span = Span {
             trace_id: self.trace_id.clone(),
             span_id,
@@ -221,7 +273,7 @@ impl SpanBuilder {
             flags: 0,
             ..Default::default()
         };
-        
+
         self.create_traces_data(span)
     }
 

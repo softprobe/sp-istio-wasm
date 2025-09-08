@@ -196,7 +196,7 @@ impl RootContext for SpRootContext {
 }
 
 struct SpHttpContext {
-    context_id: u32,
+    _context_id: u32,
     request_headers: HashMap<String, String>,
     request_body: Vec<u8>,
     response_headers: HashMap<String, String>,
@@ -205,6 +205,8 @@ struct SpHttpContext {
     pending_inject_call_token: Option<u32>,
     injected: bool,
     config: Config,
+    url_host: Option<String>,
+    url_path: Option<String>,
 }
 
 impl SpHttpContext {
@@ -214,8 +216,8 @@ impl SpHttpContext {
             .with_service_name(config.service_name.clone())
             .with_traffic_direction(config.traffic_direction.clone());
         Self {
+            _context_id: context_id,
             config: config,
-            context_id,
             request_headers: HashMap::new(),
             request_body: Vec::new(),
             response_headers: HashMap::new(),
@@ -223,7 +225,38 @@ impl SpHttpContext {
             span_builder: span_builder,
             pending_inject_call_token: None,
             injected: false,
+            url_host: None,
+            url_path: None,
+        }
+    }
 
+    fn update_url_info(&mut self) {
+        // url.path from property system, fallback to :path header
+        if let Some(prop) = self.get_property(vec!["request", "path"]) {
+            if let Ok(path) = String::from_utf8(prop) {
+                if !path.is_empty() {
+                    self.url_path = Some(path);
+                }
+            }
+        }
+        if self.url_path.is_none() {
+            if let Some(path_hdr) = self.request_headers.get(":path") {
+                self.url_path = Some(path_hdr.clone());
+            }
+        }
+
+        // url.host from :authority or host header
+        let authority_or_host = self
+            .request_headers
+            .get(":authority")
+            .cloned()
+            .or_else(|| self.request_headers.get("host").cloned());
+
+        // Keep port if present (use raw header value)
+        if let Some(authority_value) = authority_or_host {
+            if !authority_value.is_empty() {
+                self.url_host = Some(authority_value);
+            }
         }
     }
 
@@ -388,7 +421,9 @@ impl SpHttpContext {
 
 
         // 直接从请求路径获取客户端路径
-        client_path = self.request_headers.get(":path").cloned();
+        if client_path.is_none() {
+            client_path = self.request_headers.get(":path").cloned();
+        }
 
         log::info!("SP: Final client info - host: {:?}, path: {:?}", client_host, client_path);
         (client_host, client_path)
@@ -445,7 +480,12 @@ impl SpHttpContext {
         log::info!("SP Injection: Preparing injection lookup data");
 
         // Create inject span for injection lookup using references to avoid cloning
-        let traces_data = self.span_builder.create_inject_span(&self.request_headers, &self.request_body);
+        let traces_data = self.span_builder.create_inject_span(
+            &self.request_headers,
+            &self.request_body,
+            self.url_host.as_deref(),
+            self.url_path.as_deref(),
+        );
 
         // Serialize to protobuf
         let otel_data = serialize_traces_data(&traces_data)
@@ -500,6 +540,8 @@ impl SpHttpContext {
             &self.request_body,
             &self.response_headers,
             &self.response_body,
+            self.url_host.as_deref(),
+            self.url_path.as_deref(),
         );
 
         // Serialize to protobuf
@@ -619,6 +661,9 @@ impl HttpContext for SpHttpContext {
 
         let traffic_direction = self.config.traffic_direction.clone() ;
         let service_name = self.config.service_name.clone();
+        // Update url.host and url.path from properties/headers
+        self.update_url_info();
+
         // Update span builder with trace context
         let headers_clone = self.request_headers.clone();
         let span_builder = SpanBuilder::new()

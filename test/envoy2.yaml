@@ -41,6 +41,7 @@ static_resources:
                           value: |
                             {
                               "traffic_direction": "inbound",
+                              "service_name": "demo-service",
                               "sp_backend_url": "http://host.docker.internal:8081",
                               "enable_inject": false,
                               "collectionRules": {
@@ -98,6 +99,7 @@ static_resources:
                           value: |
                             {
                               "traffic_direction": "outbound",
+                              "service_name": "demo-service",
                               "sp_backend_url": "http://host.docker.internal:8081",
                               "enable_inject": false,
                               "collectionRules": {

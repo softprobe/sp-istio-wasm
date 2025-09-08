@@ -2,7 +2,6 @@ use std::collections::HashMap;
 // Note: SystemTime is not available in WASM runtime, will use proxy-wasm host functions
 use prost::Message;
 use proxy_wasm;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 // Include generated protobuf types
 pub mod opentelemetry {
@@ -60,7 +59,13 @@ impl SpanBuilder {
         self
     }
 
-    pub fn create_inject_span(&self, request_headers: &HashMap<String, String>, request_body: &[u8]) -> TracesData {
+    pub fn create_inject_span(
+        &self,
+        request_headers: &HashMap<String, String>,
+        request_body: &[u8],
+        url_host: Option<&str>,
+        url_path: Option<&str>,
+    ) -> TracesData {
         let span_id = generate_span_id();
         let mut attributes = Vec::new();
         
@@ -84,6 +89,24 @@ impl SpanBuilder {
             }
         }
         
+        // Add url attributes if available
+        if let Some(path) = url_path {
+            attributes.push(KeyValue {
+                key: "url.path".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(path.to_string())),
+                }),
+            });
+        }
+        if let Some(host) = url_host {
+            attributes.push(KeyValue {
+                key: "url.host".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(host.to_string())),
+                }),
+            });
+        }
+
         // Add request body if present and text-based
         if !request_body.is_empty() {
             let body_value = if is_text_content(request_headers) {
@@ -123,6 +146,8 @@ impl SpanBuilder {
         request_body: &[u8],
         response_headers: &HashMap<String, String>,
         response_body: &[u8],
+        url_host: Option<&str>,
+        url_path: Option<&str>,
     ) -> TracesData {
         let span_id = generate_span_id();
         let mut attributes = Vec::new();
@@ -147,6 +172,24 @@ impl SpanBuilder {
             }
         }
         
+        // Add url attributes if available
+        if let Some(path) = url_path {
+            attributes.push(KeyValue {
+                key: "url.path".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(path.to_string())),
+                }),
+            });
+        }
+        if let Some(host) = url_host {
+            attributes.push(KeyValue {
+                key: "url.host".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(host.to_string())),
+                }),
+            });
+        }
+
         // Add request body
         if !request_body.is_empty() {
             let body_value = if is_text_content(request_headers) {
@@ -306,11 +349,11 @@ fn hex_decode(hex: &str) -> Option<Vec<u8>> {
 fn get_current_timestamp_nanos() -> u64 {
     match proxy_wasm::hostcalls::get_current_time() {
         Ok(system_time) => {
-            // 将SystemTime转换为纳秒数
+            // Convert SystemTime to nanoseconds
             system_time.duration_since(std::time::UNIX_EPOCH)
                 .map(|duration| duration.as_nanos() as u64)
                 .unwrap_or_else(|_| {
-                    // 如果system_time早于UNIX_EPOCH，则使用fallback
+                    // If system_time is before UNIX_EPOCH, use fallback
                     use std::sync::atomic::{AtomicU64, Ordering};
                     static TIMESTAMP_COUNTER: AtomicU64 = AtomicU64::new(1609459200000000000_u64); // Start at Jan 1, 2021
                     TIMESTAMP_COUNTER.fetch_add(1000000, Ordering::Relaxed)

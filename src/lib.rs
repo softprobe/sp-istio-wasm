@@ -39,6 +39,7 @@ pub struct Config {
     pub service_name: String,       // 添加service_name字段
     pub traffic_direction: String,  // "inbound" 或 "outbound"
     pub collection_rules: Vec<CollectionRule>,
+    pub api_key: String,
 }
 
 impl Default for Config {
@@ -49,6 +50,7 @@ impl Default for Config {
             traffic_direction: "outbound".to_string(),
             service_name: "default-service".to_string(), // 默认服务名
             collection_rules: vec![],
+            api_key: String::new(), // 默认空字符串
         }
     }
 }
@@ -118,6 +120,11 @@ impl RootContext for SpRootContext {
                         self.config.service_name = service_name.to_string();
                         log::info!("SP: Configured service name: {}", self.config.service_name);
                     }
+                    if let Some(api_key) = config_json.get("api_key").and_then(|v| v.as_str()) {
+                        self.config.api_key = api_key.to_string();
+                        log::info!("SP: Configured API key: {}", self.config.api_key);
+                    }
+
 
                     // 解析 collectionRules
                     if let Some(rules) = config_json.get("collectionRules") {
@@ -661,6 +668,7 @@ impl HttpContext for SpHttpContext {
 
         let traffic_direction = self.config.traffic_direction.clone() ;
         let service_name = self.config.service_name.clone();
+        let api_key = self.config.api_key.clone();
         // Update url.host and url.path from properties/headers
         self.update_url_info();
 
@@ -669,6 +677,7 @@ impl HttpContext for SpHttpContext {
         let span_builder = SpanBuilder::new()
             .with_service_name(service_name)
             .with_traffic_direction(traffic_direction)
+            .with_api_key(api_key)
             .with_context(&headers_clone);
         self.span_builder = span_builder;
 

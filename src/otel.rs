@@ -35,6 +35,7 @@ pub struct SpanBuilder {
     parent_span_id: Option<Vec<u8>>,
     service_name: String,
     traffic_direction: String,  // 添加traffic_direction字段
+    api_key: String,
 }
 
 impl SpanBuilder {
@@ -44,6 +45,7 @@ impl SpanBuilder {
             parent_span_id: None,
             service_name: "default-service".to_string(),
             traffic_direction: "outbound".to_string(),  // 默认值
+            api_key: String::new(),
         }
     }
     // 添加设置service_name的方法
@@ -55,6 +57,12 @@ impl SpanBuilder {
     // 添加设置traffic_direction的方法
     pub fn with_traffic_direction(mut self, traffic_direction: String) -> Self {
         self.traffic_direction = traffic_direction;
+        self
+    }
+
+    // 添加设置api_key的方法
+    pub fn with_api_key(mut self, api_key: String) -> Self {
+        self.api_key = api_key;
         self
     }
 
@@ -106,6 +114,16 @@ impl SpanBuilder {
                 value: Some(any_value::Value::StringValue(self.traffic_direction.clone())),
             }),
         });
+
+        // Add API key attribute if present
+        if !self.api_key.is_empty() {
+            attributes.push(KeyValue {
+                key: "sp.api.key".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(self.api_key.clone())),
+                }),
+            });
+        }
 
         // Add span type attribute
         attributes.push(KeyValue {
@@ -212,6 +230,18 @@ impl SpanBuilder {
                 value: Some(any_value::Value::StringValue("extract".to_string())),
             }),
         });
+
+        // Add API key attribute if present
+        if !self.api_key.is_empty() {
+            attributes.push(KeyValue {
+                key: "sp.api.key".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(self.api_key.clone())),
+                }),
+            });
+        }
+        log::info!("api_key: {:?}", self.api_key.clone());
+
 
         // Add request headers
         for (key, value) in request_headers {

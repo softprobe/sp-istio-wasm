@@ -42,7 +42,7 @@ static_resources:
                             {
                               "traffic_direction": "inbound",
                               "service_name": "demo-service",
-                              "api_key": "test123",
+                              "api_key": "qCjaffz86DzHp6jGIH0Ks50EP0bOLCg-Iuju3HLSP4I",
                               "sp_backend_url": "http://host.docker.internal:8081",
                               "enable_inject": false,
                               "collectionRules": {
@@ -102,7 +102,7 @@ static_resources:
                               "traffic_direction": "outbound",
                               "service_name": "demo-service",
                               "sp_backend_url": "http://host.docker.internal:8081",
-                              "api_key": "test123",
+                              "api_key": "qCjaffz86DzHp6jGIH0Ks50EP0bOLCg-Iuju3HLSP4I",
                               "enable_inject": false,
                               "collectionRules": {
                                 "http": {

@@ -36,6 +36,7 @@ pub struct SpanBuilder {
     service_name: String,
     traffic_direction: String,  // 添加traffic_direction字段
     api_key: String,
+    session_id: String
 }
 
 impl SpanBuilder {
@@ -46,6 +47,7 @@ impl SpanBuilder {
             service_name: "default-service".to_string(),
             traffic_direction: "outbound".to_string(),  // 默认值
             api_key: String::new(),
+            session_id: String::new()
         }
     }
     // 添加设置service_name的方法
@@ -66,6 +68,12 @@ impl SpanBuilder {
         self
     }
 
+    // 添加设置session_id的方法
+    pub fn with_session_id(mut self, session_id: String) -> Self {
+        self.session_id = session_id;
+        self
+    }
+
     pub fn with_context(mut self, headers: &HashMap<String, String>) -> Self {
         // Extract trace context from headers if present
         if let Some(traceparent) = headers.get("traceparent") {
@@ -74,7 +82,12 @@ impl SpanBuilder {
                 self.parent_span_id = Some(span_id);
             }
         }
-        
+
+        // Extract session ID from headers if present
+        if let Some(session_id) = headers.get("sp_session_id") {
+            self.session_id = session_id.clone();
+        }
+
         // If no valid trace context found, generate new one
         if self.trace_id.is_empty() {
             self.trace_id = generate_trace_id();
@@ -132,6 +145,16 @@ impl SpanBuilder {
                 value: Some(any_value::Value::StringValue("inject".to_string())),
             }),
         });
+
+        // Add session ID attribute if present
+        if !self.session_id.is_empty() {
+            attributes.push(KeyValue {
+                key: "sp.session.id".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(self.session_id.clone())),
+                }),
+            });
+        }
         
         // Add request headers as attributes
         for (key, value) in request_headers {
@@ -242,6 +265,15 @@ impl SpanBuilder {
         }
         log::info!("api_key: {:?}", self.api_key.clone());
 
+        // Add session ID attribute if present
+        if !self.session_id.is_empty() {
+            attributes.push(KeyValue {
+                key: "sp.session.id".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(self.session_id.clone())),
+                }),
+            });
+        }
 
         // Add request headers
         for (key, value) in request_headers {

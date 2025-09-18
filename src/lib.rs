@@ -669,11 +669,17 @@ impl HttpContext for SpHttpContext {
         let traffic_direction = self.config.traffic_direction.clone() ;
         let service_name = self.config.service_name.clone();
         let api_key = self.config.api_key.clone();
+
+        log::info!("DEBUG: Before span builder update - service_name: '{}', traffic_direction: '{}', api_key: '{}'",
+                   service_name, traffic_direction, api_key);
+
         // Update url.host and url.path from properties/headers
         self.update_url_info();
 
         // Update span builder with trace context and session ID
         let headers_clone = self.request_headers.clone();
+        log::info!("DEBUG: Available headers: {:?}", headers_clone.keys().collect::<Vec<_>>());
+
         self.span_builder = self.span_builder
             .with_service_name(service_name)
             .with_traffic_direction(traffic_direction)

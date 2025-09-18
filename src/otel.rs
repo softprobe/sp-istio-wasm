@@ -68,12 +68,6 @@ impl SpanBuilder {
         self
     }
 
-    // 添加设置session_id的方法
-    pub fn with_session_id(mut self, session_id: String) -> Self {
-        self.session_id = session_id;
-        self
-    }
-
     pub fn with_context(mut self, headers: &HashMap<String, String>) -> Self {
         // Extract trace context from headers if present
         if let Some(traceparent) = headers.get("traceparent") {
@@ -83,12 +77,15 @@ impl SpanBuilder {
             }
         }
 
-        // Extract session ID from headers if present
-        if let Some(session_id) = headers.get("sp_session_id") {
+        // Extract session ID from headers if present - try different case variations
+        log::info!("DEBUG: Looking for sp_session_id in headers...");
+        let session_id_found = headers.get("sp_session_id");
+
+        if let Some(session_id) = session_id_found {
+            log::info!("DEBUG: Found session_id: '{}'", session_id);
             self.session_id = session_id.clone();
         } else {
-            // fixme 用于验证
-            self.session_id = "empty";
+            log::info!("DEBUG: No sp_session_id found in headers: {:?}", headers.keys().collect::<Vec<_>>());
         }
 
         // If no valid trace context found, generate new one
@@ -234,21 +231,22 @@ impl SpanBuilder {
         let span_id = generate_span_id();
         let mut attributes = Vec::new();
 
+        log::info!("DEBUG: service_name value: '{}'", self.service_name);
         attributes.push(KeyValue {
             key: "sp.service.name".to_string(),
             value: Some(AnyValue {
                 value: Some(any_value::Value::StringValue(self.service_name.clone())),
             }),
         });
-        log::info!("service_name: {:?}", self.service_name.clone());
+
         // Add traffic direction attribute
+        log::info!("DEBUG: traffic_direction value: '{}'", self.traffic_direction);
         attributes.push(KeyValue {
             key: "sp.traffic.direction".to_string(),
             value: Some(AnyValue {
                 value: Some(any_value::Value::StringValue(self.traffic_direction.clone())),
             }),
         });
-        log::info!("traffic_direction: {:?}", self.traffic_direction.clone());
         // Add span type attribute
         attributes.push(KeyValue {
             key: "sp.span.type".to_string(),
@@ -258,24 +256,31 @@ impl SpanBuilder {
         });
 
         // Add API key attribute if present
+        log::info!("DEBUG: api_key value: '{}'", self.api_key);
         if !self.api_key.is_empty() {
+            log::info!("DEBUG: Adding api_key attribute");
             attributes.push(KeyValue {
                 key: "sp.api.key".to_string(),
                 value: Some(AnyValue {
                     value: Some(any_value::Value::StringValue(self.api_key.clone())),
                 }),
             });
+        } else {
+            log::info!("DEBUG: api_key is empty, not adding attribute");
         }
-        log::info!("api_key: {:?}", self.api_key.clone());
 
         // Add session ID attribute if present
+        log::info!("DEBUG: session_id value: '{}'", self.session_id);
         if !self.session_id.is_empty() {
+            log::info!("DEBUG: Adding session_id attribute");
             attributes.push(KeyValue {
                 key: "sp.session.id".to_string(),
                 value: Some(AnyValue {
                     value: Some(any_value::Value::StringValue(self.session_id.clone())),
                 }),
             });
+        } else {
+            log::info!("DEBUG: session_id is empty, not adding attribute");
         }
 
         // Add request headers

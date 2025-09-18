@@ -86,6 +86,9 @@ impl SpanBuilder {
         // Extract session ID from headers if present
         if let Some(session_id) = headers.get("sp_session_id") {
             self.session_id = session_id.clone();
+        } else {
+            // fixme 用于验证
+            self.session_id = "empty";
         }
 
         // If no valid trace context found, generate new one

@@ -672,14 +672,13 @@ impl HttpContext for SpHttpContext {
         // Update url.host and url.path from properties/headers
         self.update_url_info();
 
-        // Update span builder with trace context
+        // Update span builder with trace context and session ID
         let headers_clone = self.request_headers.clone();
-        let span_builder = SpanBuilder::new()
+        self.span_builder = self.span_builder
             .with_service_name(service_name)
             .with_traffic_direction(traffic_direction)
             .with_api_key(api_key)
             .with_context(&headers_clone);
-        self.span_builder = span_builder;
 
         // If this is the end of the stream (no body), perform injection lookup now
         if end_of_stream {

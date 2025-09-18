@@ -2,7 +2,7 @@ use std::collections::HashMap;
 // Note: SystemTime is not available in WASM runtime, will use proxy-wasm host functions
 use prost::Message;
 use proxy_wasm;
-use std::sync::atomic::{AtomicU64, Ordering};
+// use std::sync::atomic::{AtomicU64, Ordering};
 
 // Include generated protobuf types
 pub mod opentelemetry {
@@ -30,6 +30,7 @@ pub use opentelemetry::proto::common::v1::{AnyValue, KeyValue, any_value};
 pub use opentelemetry::proto::resource::v1::Resource;
 pub use opentelemetry::proto::trace::v1::{TracesData, ResourceSpans, ScopeSpans, Span, Status, span};
 
+#[derive(Clone)]
 pub struct SpanBuilder {
     trace_id: Vec<u8>,
     parent_span_id: Option<Vec<u8>>,

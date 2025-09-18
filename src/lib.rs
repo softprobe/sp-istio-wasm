@@ -680,7 +680,7 @@ impl HttpContext for SpHttpContext {
         let headers_clone = self.request_headers.clone();
         log::info!("DEBUG: Available headers: {:?}", headers_clone.keys().collect::<Vec<_>>());
 
-        self.span_builder = self.span_builder
+        self.span_builder = self.span_builder.clone()
             .with_service_name(service_name)
             .with_traffic_direction(traffic_direction)
             .with_api_key(api_key)

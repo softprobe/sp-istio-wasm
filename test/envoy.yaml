@@ -22,7 +22,7 @@ static_resources:
                         - match:
                             prefix: "/"
                           route:
-                            cluster: dict-app
+                            cluster: demo-ota
                 http_filters:
                   - name: envoy.filters.http.wasm
                     typed_config:
@@ -43,12 +43,12 @@ static_resources:
                               "traffic_direction": "inbound",
                               "service_name": "demo-service",
                               "api_key": "test123",
-                              "sp_backend_url": "http://host.docker.internal:8081",
+                              "sp_backend_url": "http://jaeger:4318",
                               "enable_inject": false,
                               "collectionRules": {
                                 "http": {
                                   "server": [
-                                    { "path": "/test/1" }
+                                    { "path": ".*" }
                                   ],
                                   "client": []
                                 }
@@ -79,6 +79,10 @@ static_resources:
                       domains: ["*"]
                       routes:
                         - match:
+                            prefix: "/airline-api/"
+                          route:
+                            cluster: airline_cluster
+                        - match:
                             prefix: "/"
                           route:
                             cluster: httpbin_cluster
@@ -101,7 +105,7 @@ static_resources:
                             {
                               "traffic_direction": "outbound",
                               "service_name": "demo-service",
-                              "sp_backend_url": "http://host.docker.internal:8081",
+                              "sp_backend_url": "http://otel-collector:4318",
                               "api_key": "test123",
                               "enable_inject": false,
                               "collectionRules": {
@@ -109,15 +113,8 @@ static_resources:
                                   "server": [],
                                   "client": [
                                     {
-                                      "host": "httpbin.org",
-                                      "paths": ["/delay/1"]
-                                    },
-                                    {
-                                      "host": "httpbin.org",
-                                      "paths": ["/delay/2"]
-                                    },{
-                                      "host": "httpbin",
-                                      "paths": ["/delay/3"]
+                                      "host": ".*",
+                                      "paths": [".*"]
                                     }
                                   ]
                                 }
@@ -129,19 +126,19 @@ static_resources:
                       suppress_envoy_headers: false
 
   clusters:
-    - name: dict-app
+    - name: demo-ota
       type: STRICT_DNS
       dns_lookup_family: V4_ONLY
       lb_policy: ROUND_ROBIN
       load_assignment:
-        cluster_name: dict-app
+        cluster_name: demo-ota
         endpoints:
           - lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
-                      address: dict-app
-                      port_value: 80
+                      address: demo-ota
+                      port_value: 8080
 
     - name: inbound_passthrough
       type: ORIGINAL_DST
@@ -162,6 +159,20 @@ static_resources:
                       address: httpbin
                       port_value: 80
 
+    - name: airline_cluster
+      type: LOGICAL_DNS
+      dns_lookup_family: V4_ONLY
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: airline_cluster
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: host.docker.internal
+                      port_value: 8082
+
     - name: sp_backend
       type: LOGICAL_DNS
       dns_lookup_family: V4_ONLY
@@ -173,8 +184,8 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: host.docker.internal
-                      port_value: 8081
+                      address: jaeger
+                      port_value: 4318
 
 admin:
   address:

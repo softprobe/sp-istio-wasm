@@ -208,7 +208,7 @@ impl SpanBuilder {
             trace_id: self.trace_id.clone(),
             span_id,
             parent_span_id: self.parent_span_id.clone().unwrap_or_default(),
-            name: "agent_inject".to_string(),
+            name: url_path.unwrap_or("unknown_path").to_string(),
             kind: span::SpanKind::Client as i32,
             start_time_unix_nano: get_current_timestamp_nanos(),
             end_time_unix_nano: get_current_timestamp_nanos(),
@@ -376,7 +376,7 @@ impl SpanBuilder {
             trace_id: self.trace_id.clone(),
             span_id,
             parent_span_id: self.parent_span_id.clone().unwrap_or_default(),
-            name: "agent_extract".to_string(),
+            name: url_path.unwrap_or("unknown_path").to_string(),
             kind: span::SpanKind::Server as i32,
             start_time_unix_nano: get_current_timestamp_nanos(),
             end_time_unix_nano: get_current_timestamp_nanos(),
@@ -393,9 +393,27 @@ impl SpanBuilder {
     }
 
     fn create_traces_data(&self, span: Span) -> TracesData {
+        // Create resource with service.name attribute
+        let service_name = if self.service_name.is_empty() {
+            "default-service".to_string()
+        } else {
+            self.service_name.clone()
+        };
+
+        let resource = Resource {
+            attributes: vec![KeyValue {
+                key: "service.name".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(service_name)),
+                }),
+            }],
+            dropped_attributes_count: 0,
+            entity_refs: vec![],
+        };
+
         TracesData {
             resource_spans: vec![ResourceSpans {
-                resource: Some(Resource::default()),
+                resource: Some(resource),
                 scope_spans: vec![ScopeSpans {
                     spans: vec![span],
                     ..Default::default()
@@ -420,7 +438,7 @@ impl SpanBuilder {
     /// This can include vendor-specific trace state information
     pub fn generate_tracestate(&self) -> Option<String> {
         if !self.session_id.is_empty() {
-            Some(format!("sp=session_id:{}", self.session_id))
+            Some(format!("sp_session_id:{}", self.session_id))
         } else {
             None
         }

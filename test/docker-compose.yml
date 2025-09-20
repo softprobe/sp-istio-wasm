@@ -8,11 +8,12 @@ services:
       - service-network
       - otel-network
     environment:
-      # 显式配置代理
+      # 显式配置代理 
       - HTTP_PROXY=http://envoy-dict-app:15001
       - HTTPS_PROXY=http://envoy-dict-app:15001
       - http_proxy=http://envoy-dict-app:15001
       - https_proxy=http://envoy-dict-app:15001
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:
       - "8080:80"
     # 如果您希望入站流量也经过 Envoy，可以在应用中显式调用

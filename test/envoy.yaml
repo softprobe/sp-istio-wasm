@@ -41,7 +41,7 @@ static_resources:
                           value: |
                             {
                               "traffic_direction": "inbound",
-                              "service_name": "demo-service",
+                              "service_name": "sp-travel-ota",
                               "api_key": "test123",
                               "sp_backend_url": "http://jaeger:4318",
                               "enable_inject": false,
@@ -104,8 +104,8 @@ static_resources:
                           value: |
                             {
                               "traffic_direction": "outbound",
-                              "service_name": "demo-service",
-                              "sp_backend_url": "http://otel-collector:4318",
+                              "service_name": "sp-travel-ota",
+                              "sp_backend_url": "http://jaeger:4318",
                               "api_key": "test123",
                               "enable_inject": false,
                               "collectionRules": {

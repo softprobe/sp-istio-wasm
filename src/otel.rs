@@ -78,15 +78,27 @@ impl SpanBuilder {
             }
         }
 
-        // Extract session ID from headers if present - try different case variations
-        log::info!("DEBUG: Looking for sp_session_id in headers...");
-        let session_id_found = headers.get("sp_session_id");
-
-        if let Some(session_id) = session_id_found {
-            log::info!("DEBUG: Found session_id: '{}'", session_id);
-            self.session_id = session_id.clone();
+        // Extract session ID from tracestate header if present
+        log::info!("DEBUG: Looking for session_id in tracestate...");
+        if let Some(tracestate) = headers.get("tracestate") {
+            log::info!("DEBUG: Found tracestate: '{}'", tracestate);
+            if let Some(session_id) = parse_session_id_from_tracestate(tracestate) {
+                log::info!("DEBUG: Extracted session_id from tracestate: '{}'", session_id);
+                self.session_id = session_id;
+            } else {
+                log::info!("DEBUG: No sp_session_id found in tracestate");
+            }
         } else {
-            log::info!("DEBUG: No sp_session_id found in headers: {:?}", headers.keys().collect::<Vec<_>>());
+            // Fallback: try to get session ID from headers directly
+            log::info!("DEBUG: No tracestate found, looking for sp_session_id in headers...");
+            let session_id_found = headers.get("sp_session_id");
+
+            if let Some(session_id) = session_id_found {
+                log::info!("DEBUG: Found session_id in headers: '{}'", session_id);
+                self.session_id = session_id.clone();
+            } else {
+                log::info!("DEBUG: No sp_session_id found in headers: {:?}", headers.keys().collect::<Vec<_>>());
+            }
         }
 
         // If no valid trace context found, generate new one
@@ -282,6 +294,28 @@ impl SpanBuilder {
             });
         } else {
             log::info!("DEBUG: session_id is empty, not adding attribute");
+        }
+
+        // Add tracestate as span attribute for visibility in Jaeger
+        if let Some(tracestate) = self.generate_tracestate() {
+            log::info!("DEBUG: Adding tracestate as span attribute: '{}'", tracestate);
+            attributes.push(KeyValue {
+                key: "http.request.header.tracestate".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(tracestate)),
+                }),
+            });
+        }
+
+        // Add tracestate as span attribute for visibility in Jaeger
+        if let Some(tracestate) = self.generate_tracestate() {
+            log::info!("DEBUG: Adding tracestate as span attribute: '{}'", tracestate);
+            attributes.push(KeyValue {
+                key: "http.request.header.tracestate".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(tracestate)),
+                }),
+            });
         }
 
         // Add request headers
@@ -552,4 +586,18 @@ fn is_text_content(headers: &HashMap<String, String>) -> bool {
 
 fn hex_encode(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+fn parse_session_id_from_tracestate(tracestate: &str) -> Option<String> {
+    // Parse tracestate format: "key1:value1,key2:value2,..."
+    // Look for sp_session_id key
+    for entry in tracestate.split(',') {
+        let entry = entry.trim();
+        if let Some((key, value)) = entry.split_once(':') {
+            if key.trim() == "sp_session_id" {
+                return Some(value.trim().to_string());
+            }
+        }
+    }
+    None
 }

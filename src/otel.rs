@@ -404,6 +404,27 @@ impl SpanBuilder {
             }],
         }
     }
+
+    /// Generate W3C traceparent header value
+    /// Format: 00-{trace_id}-{span_id}-{trace_flags}
+    pub fn generate_traceparent(&self, span_id: &[u8]) -> String {
+        let version = "00";
+        let trace_id_hex = hex_encode(&self.trace_id);
+        let span_id_hex = hex_encode(span_id);
+        let trace_flags = "01"; // sampled flag set
+        
+        format!("{}-{}-{}-{}", version, trace_id_hex, span_id_hex, trace_flags)
+    }
+
+    /// Generate W3C tracestate header value
+    /// This can include vendor-specific trace state information
+    pub fn generate_tracestate(&self) -> Option<String> {
+        if !self.session_id.is_empty() {
+            Some(format!("sp=session_id:{}", self.session_id))
+        } else {
+            None
+        }
+    }
 }
 
 pub fn serialize_traces_data(traces_data: &TracesData) -> Result<Vec<u8>, prost::EncodeError> {
@@ -428,7 +449,7 @@ fn generate_trace_id() -> Vec<u8> {
     trace_id
 }
 
-fn generate_span_id() -> Vec<u8> {
+pub fn generate_span_id() -> Vec<u8> {
     let mut span_id = vec![0u8; 8];
     
     // Use current timestamp as source of randomness
@@ -509,4 +530,8 @@ fn is_text_content(headers: &HashMap<String, String>) -> bool {
     } else {
         false
     }
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }

@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # 应用服务 (dict-app)
   dict-app:
-    image: dict-app
+    image: dict-app:v0.0.1
     networks:
       - service-network
     environment:
@@ -19,9 +19,9 @@ services:
 
   # dict-app 的 Envoy sidecar
   envoy-dict-app:
-    image: envoyproxy/envoy:v1.27-latest
+    image: gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/sp-envoy:v0.0.1
     volumes:
-      - ./envoy2.yaml:/etc/envoy/envoy.yaml
+      - ./envoy.yaml:/etc/envoy/envoy.yaml
       - ../target/wasm32-unknown-unknown/release/sp_istio_agent.wasm:/etc/envoy/sp_istio_agent.wasm
     networks:
       - service-network

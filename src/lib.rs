@@ -588,6 +588,74 @@ impl SpHttpContext {
             }
         }
     }
+
+    /// Inject W3C Trace Context headers into the outgoing request
+    fn inject_trace_context_headers(&mut self) {
+        // Only inject if traceparent header is not already present
+        if !self.request_headers.contains_key("traceparent") {
+            // Generate a new span ID for this request
+            let span_id = crate::otel::generate_span_id();
+            
+            // Generate traceparent header
+            let traceparent = self.span_builder.generate_traceparent(&span_id);
+            log::info!("SP: Injecting traceparent header: {}", traceparent);
+            
+            // Add traceparent header to the request
+            let _ = self.add_http_request_header("traceparent", &traceparent);
+            
+            // Generate and add tracestate header if available
+            if let Some(tracestate) = self.span_builder.generate_tracestate() {
+                log::info!("SP: Injecting tracestate header: {}", tracestate);
+                let _ = self.add_http_request_header("tracestate", &tracestate);
+            }
+        } else {
+            log::info!("SP: traceparent header already present, skipping injection");
+        }
+    }
+
+    /// Extract and propagate W3C Trace Context from response headers
+    fn extract_and_propagate_trace_context(&mut self) {
+        // Check if response contains W3C Trace Context headers
+        if let Some(traceparent) = self.response_headers.get("traceparent") {
+            log::info!("SP: Found traceparent in response: {}", traceparent);
+            
+            // Update span builder with the response trace context
+            let mut updated_headers = HashMap::new();
+            updated_headers.insert("traceparent".to_string(), traceparent.clone());
+            
+            if let Some(tracestate) = self.response_headers.get("tracestate") {
+                log::info!("SP: Found tracestate in response: {}", tracestate);
+                updated_headers.insert("tracestate".to_string(), tracestate.clone());
+            }
+            
+            // Update the span builder with the response trace context
+            self.span_builder = self.span_builder.clone().with_context(&updated_headers);
+            
+            // Propagate trace context to downstream response
+            self.propagate_trace_context_to_response();
+        } else {
+            log::debug!("SP: No traceparent found in response headers");
+        }
+    }
+
+    /// Propagate trace context to the downstream response
+    fn propagate_trace_context_to_response(&mut self) {
+        // Generate a new span ID for the response
+        let span_id = crate::otel::generate_span_id();
+        
+        // Generate traceparent header for the response
+        let traceparent = self.span_builder.generate_traceparent(&span_id);
+        log::info!("SP: Propagating traceparent to response: {}", traceparent);
+        
+        // Add traceparent header to the response
+        let _ = self.add_http_response_header("traceparent", &traceparent);
+        
+        // Generate and add tracestate header if available
+        if let Some(tracestate) = self.span_builder.generate_tracestate() {
+            log::info!("SP: Propagating tracestate to response: {}", tracestate);
+            let _ = self.add_http_response_header("tracestate", &tracestate);
+        }
+    }
 }
 
 impl Context for SpHttpContext {
@@ -686,6 +754,9 @@ impl HttpContext for SpHttpContext {
             .with_api_key(api_key)
             .with_context(&headers_clone);
 
+        // Inject W3C Trace Context headers if not already present
+        self.inject_trace_context_headers();
+
         // If this is the end of the stream (no body), perform injection lookup now
         if end_of_stream {
             log::info!("SP Injection: No request body, performing injection lookup immediately");
@@ -741,6 +812,9 @@ impl HttpContext for SpHttpContext {
         for (key, value) in self.get_http_response_headers() {
             self.response_headers.insert(key, value);
         }
+
+        // Extract and propagate W3C Trace Context from response headers
+        self.extract_and_propagate_trace_context();
 
         Action::Continue
     }

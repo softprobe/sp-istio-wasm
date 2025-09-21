@@ -210,6 +210,7 @@ struct SpHttpContext {
     response_body: Vec<u8>,
     span_builder: SpanBuilder,
     pending_inject_call_token: Option<u32>,
+    pending_save_call_token: Option<u32>,
     injected: bool,
     config: Config,
     url_host: Option<String>,
@@ -231,6 +232,7 @@ impl SpHttpContext {
             response_body: Vec::new(),
             span_builder: span_builder,
             pending_inject_call_token: None,
+            pending_save_call_token: None,
             injected: false,
             url_host: None,
             url_path: None,
@@ -580,6 +582,7 @@ impl SpHttpContext {
         ) {
             Ok(call_id) => {
                 log::info!("SP Extraction: Async save dispatched with call_id: {}", call_id);
+                self.pending_save_call_token = Some(call_id);
                 Ok(())
             }
             Err(e) => {
@@ -588,6 +591,62 @@ impl SpHttpContext {
             }
         }
     }
+
+    /// Inject W3C Trace Context headers into the outgoing request
+    fn inject_trace_context_headers(&mut self) {
+        // Only inject if traceparent header is not already present
+        if !self.request_headers.contains_key("traceparent") {
+            // Generate a new span ID for this request
+            let span_id = crate::otel::generate_span_id();
+            
+            // Generate traceparent header
+            let traceparent = self.span_builder.generate_traceparent(&span_id);
+            log::info!("SP: Injecting traceparent header: {}", traceparent);
+            
+            // Add traceparent header to the request
+            let _ = self.add_http_request_header("traceparent", &traceparent);
+        } else {
+            log::info!("SP: traceparent header already present, skipping injection");
+        }
+    }
+
+    /// Extract and propagate W3C Trace Context from response headers
+    fn extract_and_propagate_trace_context(&mut self) {
+        // Check if response contains W3C Trace Context headers
+        if let Some(traceparent) = self.response_headers.get("traceparent") {
+            log::info!("SP: Found traceparent in response: {}", traceparent);
+            
+            // Update span builder with the response trace context
+            let mut updated_headers = HashMap::new();
+            updated_headers.insert("traceparent".to_string(), traceparent.clone());
+            
+            if let Some(tracestate) = self.response_headers.get("tracestate") {
+                log::info!("SP: Found tracestate in response: {}", tracestate);
+                updated_headers.insert("tracestate".to_string(), tracestate.clone());
+            }
+            
+            // Update the span builder with the response trace context
+            self.span_builder = self.span_builder.clone().with_context(&updated_headers);
+            
+            // Propagate trace context to downstream response
+            self.propagate_trace_context_to_response();
+        } else {
+            log::debug!("SP: No traceparent found in response headers");
+        }
+    }
+
+    /// Propagate trace context to the downstream response
+    fn propagate_trace_context_to_response(&mut self) {
+        // Generate a new span ID for the response
+        let span_id = crate::otel::generate_span_id();
+        
+        // Generate traceparent header for the response
+        let traceparent = self.span_builder.generate_traceparent(&span_id);
+        log::info!("SP: Propagating traceparent to response: {}", traceparent);
+        
+        // Add traceparent header to the response
+        let _ = self.add_http_response_header("traceparent", &traceparent);
+    }
 }
 
 impl Context for SpHttpContext {
@@ -595,10 +654,38 @@ impl Context for SpHttpContext {
     fn on_http_call_response(&mut self, token_id: u32, _num_headers: usize, body_size: usize, _num_trailers: usize) {
         log::info!("SP: *** HTTP CALL RESPONSE RECEIVED *** token: {}, body_size: {}", token_id, body_size);
         log::info!("SP: pending_inject_call_token = {:?}", self.pending_inject_call_token);
+        log::info!("SP: pending_save_call_token = {:?}", self.pending_save_call_token);
         log::info!("SP: All headers from response:");
         let response_headers = self.get_http_call_response_headers();
         for (key, value) in &response_headers {
             log::info!("SP:   {}: {}", key, value);
+        }
+
+        // Check if this is the response to our async save call
+        if let Some(pending_save_token) = self.pending_save_call_token {
+            if pending_save_token == token_id {
+                log::info!("SP: Processing async save response");
+                self.pending_save_call_token = None;
+                
+                // Get response status
+                let status_code = self.get_http_call_response_header(":status")
+                    .and_then(|s| s.parse::<u32>().ok())
+                    .unwrap_or(500);
+
+                log::info!("SP: Async save response status: {}", status_code);
+                
+                if status_code == 200 {
+                    log::info!("SP: Async save successful - traces data sent to OTEL Collector");
+                } else {
+                    log::warn!("SP: Async save failed with status: {}", status_code);
+                    if body_size > 0 {
+                        let response_body = self.get_http_call_response_body(0, body_size)
+                            .unwrap_or_default();
+                        log::warn!("SP: Error response body: {}", String::from_utf8_lossy(&response_body));
+                    }
+                }
+                return; // Don't process as injection response
+            }
         }
 
         // Check if this is the response to our agent lookup call
@@ -686,6 +773,9 @@ impl HttpContext for SpHttpContext {
             .with_api_key(api_key)
             .with_context(&headers_clone);
 
+        // Inject W3C Trace Context headers if not already present
+        self.inject_trace_context_headers();
+
         // If this is the end of the stream (no body), perform injection lookup now
         if end_of_stream {
             log::info!("SP Injection: No request body, performing injection lookup immediately");
@@ -741,6 +831,9 @@ impl HttpContext for SpHttpContext {
         for (key, value) in self.get_http_response_headers() {
             self.response_headers.insert(key, value);
         }
+
+        // Extract and propagate W3C Trace Context from response headers
+        self.extract_and_propagate_trace_context();
 
         Action::Continue
     }

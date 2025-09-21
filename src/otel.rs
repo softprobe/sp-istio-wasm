@@ -78,15 +78,16 @@ impl SpanBuilder {
             }
         }
 
-        // Extract session ID from headers if present - try different case variations
-        log::info!("DEBUG: Looking for sp_session_id in headers...");
-        let session_id_found = headers.get("sp_session_id");
+        // Get session ID from headers directly
+        log::info!("DEBUG: Looking for session_id in headers...");
+        let session_id_found = headers.get("x-sp-session-id")
+            .or_else(|| headers.get("sp_session_id"));
 
         if let Some(session_id) = session_id_found {
-            log::info!("DEBUG: Found session_id: '{}'", session_id);
+            log::info!("DEBUG: Found session_id in headers: '{}'", session_id);
             self.session_id = session_id.clone();
         } else {
-            log::info!("DEBUG: No sp_session_id found in headers: {:?}", headers.keys().collect::<Vec<_>>());
+            log::info!("DEBUG: No session_id found in headers: {:?}", headers.keys().collect::<Vec<_>>());
         }
 
         // If no valid trace context found, generate new one
@@ -208,7 +209,7 @@ impl SpanBuilder {
             trace_id: self.trace_id.clone(),
             span_id,
             parent_span_id: self.parent_span_id.clone().unwrap_or_default(),
-            name: "agent_inject".to_string(),
+            name: url_path.unwrap_or("unknown_path").to_string(),
             kind: span::SpanKind::Client as i32,
             start_time_unix_nano: get_current_timestamp_nanos(),
             end_time_unix_nano: get_current_timestamp_nanos(),
@@ -376,7 +377,7 @@ impl SpanBuilder {
             trace_id: self.trace_id.clone(),
             span_id,
             parent_span_id: self.parent_span_id.clone().unwrap_or_default(),
-            name: "agent_extract".to_string(),
+            name: url_path.unwrap_or("unknown_path").to_string(),
             kind: span::SpanKind::Server as i32,
             start_time_unix_nano: get_current_timestamp_nanos(),
             end_time_unix_nano: get_current_timestamp_nanos(),
@@ -393,9 +394,27 @@ impl SpanBuilder {
     }
 
     fn create_traces_data(&self, span: Span) -> TracesData {
+        // Create resource with service.name attribute
+        let service_name = if self.service_name.is_empty() {
+            "default-service".to_string()
+        } else {
+            self.service_name.clone()
+        };
+
+        let resource = Resource {
+            attributes: vec![KeyValue {
+                key: "service.name".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(service_name)),
+                }),
+            }],
+            dropped_attributes_count: 0,
+            entity_refs: vec![],
+        };
+
         TracesData {
             resource_spans: vec![ResourceSpans {
-                resource: Some(Resource::default()),
+                resource: Some(resource),
                 scope_spans: vec![ScopeSpans {
                     spans: vec![span],
                     ..Default::default()
@@ -404,7 +423,19 @@ impl SpanBuilder {
             }],
         }
     }
-}
+
+    /// Generate W3C traceparent header value
+    /// Format: 00-{trace_id}-{span_id}-{trace_flags}
+    pub fn generate_traceparent(&self, span_id: &[u8]) -> String {
+        let version = "00";
+        let trace_id_hex = hex_encode(&self.trace_id);
+        let span_id_hex = hex_encode(span_id);
+        let trace_flags = "01"; // sampled flag set
+        
+        format!("{}-{}-{}-{}", version, trace_id_hex, span_id_hex, trace_flags)
+    }
+
+    }
 
 pub fn serialize_traces_data(traces_data: &TracesData) -> Result<Vec<u8>, prost::EncodeError> {
     let mut buf = Vec::new();
@@ -428,7 +459,7 @@ fn generate_trace_id() -> Vec<u8> {
     trace_id
 }
 
-fn generate_span_id() -> Vec<u8> {
+pub fn generate_span_id() -> Vec<u8> {
     let mut span_id = vec![0u8; 8];
     
     // Use current timestamp as source of randomness
@@ -509,4 +540,8 @@ fn is_text_content(headers: &HashMap<String, String>) -> bool {
     } else {
         false
     }
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }

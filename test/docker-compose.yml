@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # 应用服务 (dict-app)
   demo-ota:
-    image: gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/demo-ota:v0.0.3-1
+    image: gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/demo-ota:v0.0.3
     networks:
       - service-network
       - otel-network
@@ -21,7 +21,7 @@ services:
 
   # dict-app 的 Envoy sidecar
   envoy-dict-app:
-    image: gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/sp-envoy:v0.0.1
+    image: gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/sp-envoy:v1.1.6
     volumes:
       - ./envoy.yaml:/etc/envoy/envoy.yaml
       - ../target/wasm32-unknown-unknown/release/sp_istio_agent.wasm:/etc/envoy/sp_istio_agent.wasm

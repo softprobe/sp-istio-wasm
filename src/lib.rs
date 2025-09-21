@@ -605,12 +605,6 @@ impl SpHttpContext {
             
             // Add traceparent header to the request
             let _ = self.add_http_request_header("traceparent", &traceparent);
-            
-            // Generate and add tracestate header if available
-            if let Some(tracestate) = self.span_builder.generate_tracestate() {
-                log::info!("SP: Injecting tracestate header: {}", tracestate);
-                let _ = self.add_http_request_header("tracestate", &tracestate);
-            }
         } else {
             log::info!("SP: traceparent header already present, skipping injection");
         }
@@ -652,12 +646,6 @@ impl SpHttpContext {
         
         // Add traceparent header to the response
         let _ = self.add_http_response_header("traceparent", &traceparent);
-        
-        // Generate and add tracestate header if available
-        if let Some(tracestate) = self.span_builder.generate_tracestate() {
-            log::info!("SP: Propagating tracestate to response: {}", tracestate);
-            let _ = self.add_http_response_header("tracestate", &tracestate);
-        }
     }
 }
 

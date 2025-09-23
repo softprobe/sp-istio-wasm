@@ -441,16 +441,22 @@ impl SpHttpContext {
         match Url::parse(&self.config.sp_backend_url) {
             Ok(url) => {
                 if let Some(host) = url.host_str() {
+                    // For HTTPS, don't include the default port 443
+                    // For HTTP, don't include the default port 80
                     match url.port() {
-                        Some(port) => format!("{}:{}", host, port),
-                        None => {
+                        Some(port) => {
                             let default_port = match url.scheme() {
                                 "https" => 443,
                                 "http" => 80,
                                 _ => 80,
                             };
-                            format!("{}:{}", host, default_port)
+                            if port == default_port {
+                                host.to_string()
+                            } else {
+                                format!("{}:{}", host, port)
+                            }
                         }
+                        None => host.to_string(),
                     }
                 } else {
                     "o.softprobe.ai".to_string()
@@ -494,10 +500,12 @@ impl SpHttpContext {
         ];
 
         log::info!("SP Injection: Dispatching injection lookup call, body size: {}", otel_data.len());
+        log::info!("SP Injection: Authority: {}, Headers: {:?}", authority, http_headers);
 
         // Use the context's dispatch_http_call method to maintain context
+        // Using Envoy cluster name for HTTPS (configured via ServiceEntry)
         match self.dispatch_http_call(
-            "sp_backend",
+            "outbound|443||o.softprobe.ai",
             http_headers,
             Some(&otel_data),
             vec![],
@@ -551,10 +559,12 @@ impl SpHttpContext {
         ];
 
         log::info!("SP Extraction: Dispatching async save call, body size: {}", otel_data.len());
+        log::info!("SP Extraction: Authority: {}, Headers: {:?}", authority, http_headers);
 
         // Fire and forget async call to /v1/traces endpoint for storage
+        // Using Envoy cluster name for HTTPS (configured via ServiceEntry)
         match self.dispatch_http_call(
-            "sp_backend",
+            "outbound|443||o.softprobe.ai",
             http_headers,
             Some(&otel_data),
             vec![],
@@ -645,6 +655,7 @@ impl HttpContext for SpHttpContext {
 
         // Capture request headers
         for (key, value) in self.get_http_request_headers() {
+            log::debug!("SP: Request header: {}: {}", key, value);
             self.request_headers.insert(key, value);
         }
 

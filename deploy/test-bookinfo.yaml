@@ -1,0 +1,54 @@
+---
+# Softprobe Istio Agent - Test Configuration for Bookinfo App
+# This configuration targets only the productpage service for testing
+# Usage: kubectl apply -f deploy/test-bookinfo.yaml
+
+apiVersion: extensions.istio.io/v1alpha1
+kind: WasmPlugin
+metadata:
+  name: sp-istio-agent-test
+  namespace: default  # Apply to default namespace where Bookinfo is running
+spec:
+  # Apply only to productpage service to test outbound calls
+  selector:
+    matchLabels:
+      app: productpage
+  
+  # Use the public Docker Hub image (which contains the WASM binary)
+  url: oci://docker.io/softprobe/sp-istio-wasm:v1.0.5-cluster-fix
+  sha256: "bfe88330b7f06ba84d4b8af02954b2301739e68060fdc827a8fd6765e2a46f92"
+  phase: AUTHN  # Insert early in the filter chain
+  
+  # Configuration for the WASM extension
+  pluginConfig:
+    # Backend Configuration
+    sp_backend_url: "https://o.softprobe.ai"
+    enable_inject: false  # Disable injection for initial testing
+    traffic_direction: "outbound"  # Capture outbound HTTP calls from productpage
+    
+    # Collection Rules - capture all outbound traffic from productpage
+    collectionRules:
+      http:
+        server: []  # No server-side filtering
+        client: []  # No client-side filtering (collect all outbound traffic)
+
+---
+# ServiceEntry to register Softprobe backend as external service
+# This creates an upstream cluster that WASM can reference in dispatch_http_call
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: softprobe-backend
+  namespace: default
+spec:
+  hosts:
+  - o.softprobe.ai
+  ports:
+  - number: 443
+    name: https
+    protocol: HTTPS
+  - number: 80  
+    name: http
+    protocol: HTTP
+  location: MESH_EXTERNAL
+  resolution: DNS

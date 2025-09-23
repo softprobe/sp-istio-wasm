@@ -72,12 +72,16 @@ else
 fi
 
 VERSION=$1
-IMAGE_NAME="sp-envoy"
-REGISTRY="gcr.io/cs-poc-sasxbttlzroculpau4u6e2l"
-FULL_IMAGE_NAME="${REGISTRY}/${IMAGE_NAME}:${VERSION}"
+GCR_IMAGE_NAME="sp-envoy"
+DOCKERHUB_IMAGE_NAME="sp-istio-wasm"
+GCR_REGISTRY="gcr.io/cs-poc-sasxbttlzroculpau4u6e2l"
+DOCKERHUB_REGISTRY="softprobe"
+GCR_FULL_IMAGE_NAME="${GCR_REGISTRY}/${GCR_IMAGE_NAME}:${VERSION}"
+DOCKERHUB_FULL_IMAGE_NAME="${DOCKERHUB_REGISTRY}/${DOCKERHUB_IMAGE_NAME}:${VERSION}"
 
 echo "🚀 Starting Docker build and push process..."
-echo "📦 Image: ${FULL_IMAGE_NAME}"
+echo "📦 GCR Image: ${GCR_FULL_IMAGE_NAME}"
+echo "📦 Docker Hub Image: ${DOCKERHUB_FULL_IMAGE_NAME}"
 echo "🏷️  Version: ${VERSION}"
 echo ""
 
@@ -98,18 +102,26 @@ echo "🔐 Configuring Docker authentication with Google Cloud..."
 gcloud auth configure-docker
 
 echo "🔨 Building Docker image..."
-docker build --platform linux/amd64 -t ${IMAGE_NAME}:${VERSION} .
+docker build --platform linux/amd64 -t ${GCR_IMAGE_NAME}:${VERSION} .
 
-echo "🏷️  Tagging image for Google Container Registry..."
-docker tag ${IMAGE_NAME}:${VERSION} ${FULL_IMAGE_NAME}
+echo "🏷️  Tagging images for both registries..."
+docker tag ${GCR_IMAGE_NAME}:${VERSION} ${GCR_FULL_IMAGE_NAME}
+docker tag ${GCR_IMAGE_NAME}:${VERSION} ${DOCKERHUB_FULL_IMAGE_NAME}
 
 echo "📤 Pushing image to Google Container Registry..."
-docker push ${FULL_IMAGE_NAME}
+docker push ${GCR_FULL_IMAGE_NAME}
 
-echo "✅ Successfully built and pushed ${FULL_IMAGE_NAME}"
+echo "📤 Pushing image to Docker Hub..."
+docker push ${DOCKERHUB_FULL_IMAGE_NAME}
+
+echo "✅ Successfully built and pushed to both registries:"
+echo "   📦 GCR: ${GCR_FULL_IMAGE_NAME}"
+echo "   📦 Docker Hub: ${DOCKERHUB_FULL_IMAGE_NAME}"
 
 # Clean up local tags
 echo "🧹 Cleaning up local tags..."
-docker rmi ${IMAGE_NAME}:${VERSION} ${FULL_IMAGE_NAME}
+docker rmi ${GCR_IMAGE_NAME}:${VERSION} ${GCR_FULL_IMAGE_NAME} ${DOCKERHUB_FULL_IMAGE_NAME}
 
-echo "🎉 Done! Image ${FULL_IMAGE_NAME} is now available in Google Container Registry"
+echo "🎉 Done! Images are now available in both registries:"
+echo "   🔒 Private GCR: ${GCR_FULL_IMAGE_NAME}"
+echo "   🌍 Public Docker Hub: ${DOCKERHUB_FULL_IMAGE_NAME}"

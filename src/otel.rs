@@ -2,6 +2,7 @@ use std::collections::HashMap;
 // Note: SystemTime is not available in WASM runtime, will use proxy-wasm host functions
 use prost::Message;
 use proxy_wasm;
+// use std::sync::atomic::{AtomicU64, Ordering};
 
 // Include generated protobuf types
 pub mod opentelemetry {
@@ -29,9 +30,14 @@ pub use opentelemetry::proto::common::v1::{AnyValue, KeyValue, any_value};
 pub use opentelemetry::proto::resource::v1::Resource;
 pub use opentelemetry::proto::trace::v1::{TracesData, ResourceSpans, ScopeSpans, Span, Status, span};
 
+#[derive(Clone)]
 pub struct SpanBuilder {
     trace_id: Vec<u8>,
     parent_span_id: Option<Vec<u8>>,
+    service_name: String,
+    traffic_direction: String,  // 添加traffic_direction字段
+    api_key: String,
+    session_id: String
 }
 
 impl SpanBuilder {
@@ -39,7 +45,28 @@ impl SpanBuilder {
         Self {
             trace_id: generate_trace_id(),
             parent_span_id: None,
+            service_name: "default-service".to_string(),
+            traffic_direction: "outbound".to_string(),  // 默认值
+            api_key: String::new(),
+            session_id: String::new()
         }
+    }
+    // 添加设置service_name的方法
+    pub fn with_service_name(mut self, service_name: String) -> Self {
+        self.service_name = service_name;
+        self
+    }
+
+    // 添加设置traffic_direction的方法
+    pub fn with_traffic_direction(mut self, traffic_direction: String) -> Self {
+        self.traffic_direction = traffic_direction;
+        self
+    }
+
+    // 添加设置api_key的方法
+    pub fn with_api_key(mut self, api_key: String) -> Self {
+        self.api_key = api_key;
+        self
     }
 
     pub fn with_context(mut self, headers: &HashMap<String, String>) -> Self {
@@ -50,7 +77,19 @@ impl SpanBuilder {
                 self.parent_span_id = Some(span_id);
             }
         }
-        
+
+        // Get session ID from headers directly
+        log::info!("DEBUG: Looking for session_id in headers...");
+        let session_id_found = headers.get("x-sp-session-id")
+            .or_else(|| headers.get("sp_session_id"));
+
+        if let Some(session_id) = session_id_found {
+            log::info!("DEBUG: Found session_id in headers: '{}'", session_id);
+            self.session_id = session_id.clone();
+        } else {
+            log::info!("DEBUG: No session_id found in headers: {:?}", headers.keys().collect::<Vec<_>>());
+        }
+
         // If no valid trace context found, generate new one
         if self.trace_id.is_empty() {
             self.trace_id = generate_trace_id();
@@ -68,7 +107,39 @@ impl SpanBuilder {
     ) -> TracesData {
         let span_id = generate_span_id();
         let mut attributes = Vec::new();
-        
+
+        // Add service name attribute
+        let service_name = if self.service_name.is_empty() {
+            "default-service".to_string()
+        } else {
+            self.service_name.clone()
+        };
+
+        attributes.push(KeyValue {
+            key: "sp.service.name".to_string(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue(service_name)),
+            }),
+        });
+
+        // Add traffic direction attribute
+        attributes.push(KeyValue {
+            key: "sp.traffic.direction".to_string(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue(self.traffic_direction.clone())),
+            }),
+        });
+
+        // Add API key attribute if present
+        if !self.api_key.is_empty() {
+            attributes.push(KeyValue {
+                key: "sp.api.key".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(self.api_key.clone())),
+                }),
+            });
+        }
+
         // Add span type attribute
         attributes.push(KeyValue {
             key: "sp.span.type".to_string(),
@@ -76,6 +147,16 @@ impl SpanBuilder {
                 value: Some(any_value::Value::StringValue("inject".to_string())),
             }),
         });
+
+        // Add session ID attribute if present
+        if !self.session_id.is_empty() {
+            attributes.push(KeyValue {
+                key: "sp.session.id".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(self.session_id.clone())),
+                }),
+            });
+        }
         
         // Add request headers as attributes
         for (key, value) in request_headers {
@@ -128,7 +209,7 @@ impl SpanBuilder {
             trace_id: self.trace_id.clone(),
             span_id,
             parent_span_id: self.parent_span_id.clone().unwrap_or_default(),
-            name: "agent_inject".to_string(),
+            name: url_path.unwrap_or("unknown_path").to_string(),
             kind: span::SpanKind::Client as i32,
             start_time_unix_nano: get_current_timestamp_nanos(),
             end_time_unix_nano: get_current_timestamp_nanos(),
@@ -151,7 +232,23 @@ impl SpanBuilder {
     ) -> TracesData {
         let span_id = generate_span_id();
         let mut attributes = Vec::new();
-        
+
+        log::info!("DEBUG: service_name value: '{}'", self.service_name);
+        attributes.push(KeyValue {
+            key: "sp.service.name".to_string(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue(self.service_name.clone())),
+            }),
+        });
+
+        // Add traffic direction attribute
+        log::info!("DEBUG: traffic_direction value: '{}'", self.traffic_direction);
+        attributes.push(KeyValue {
+            key: "sp.traffic.direction".to_string(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue(self.traffic_direction.clone())),
+            }),
+        });
         // Add span type attribute
         attributes.push(KeyValue {
             key: "sp.span.type".to_string(),
@@ -159,7 +256,35 @@ impl SpanBuilder {
                 value: Some(any_value::Value::StringValue("extract".to_string())),
             }),
         });
-        
+
+        // Add API key attribute if present
+        log::info!("DEBUG: api_key value: '{}'", self.api_key);
+        if !self.api_key.is_empty() {
+            log::info!("DEBUG: Adding api_key attribute");
+            attributes.push(KeyValue {
+                key: "sp.api.key".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(self.api_key.clone())),
+                }),
+            });
+        } else {
+            log::info!("DEBUG: api_key is empty, not adding attribute");
+        }
+
+        // Add session ID attribute if present
+        log::info!("DEBUG: session_id value: '{}'", self.session_id);
+        if !self.session_id.is_empty() {
+            log::info!("DEBUG: Adding session_id attribute");
+            attributes.push(KeyValue {
+                key: "sp.session.id".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(self.session_id.clone())),
+                }),
+            });
+        } else {
+            log::info!("DEBUG: session_id is empty, not adding attribute");
+        }
+
         // Add request headers
         for (key, value) in request_headers {
             if !should_skip_header(key) {
@@ -171,7 +296,7 @@ impl SpanBuilder {
                 });
             }
         }
-        
+
         // Add url attributes if available
         if let Some(path) = url_path {
             attributes.push(KeyValue {
@@ -198,7 +323,7 @@ impl SpanBuilder {
                 use base64::{Engine as _, engine::general_purpose};
                 general_purpose::STANDARD.encode(request_body)
             };
-            
+
             attributes.push(KeyValue {
                 key: "http.request.body".to_string(),
                 value: Some(AnyValue {
@@ -206,7 +331,7 @@ impl SpanBuilder {
                 }),
             });
         }
-        
+
         // Add response headers
         for (key, value) in response_headers {
             if !should_skip_header(key) {
@@ -218,7 +343,7 @@ impl SpanBuilder {
                 });
             }
         }
-        
+
         // Add response status code
         if let Some(status) = response_headers.get(":status") {
             if let Ok(status_code) = status.parse::<i64>() {
@@ -230,7 +355,7 @@ impl SpanBuilder {
                 });
             }
         }
-        
+
         // Add response body
         if !response_body.is_empty() {
             let body_value = if is_text_content(response_headers) {
@@ -239,7 +364,7 @@ impl SpanBuilder {
                 use base64::{Engine as _, engine::general_purpose};
                 general_purpose::STANDARD.encode(response_body)
             };
-            
+
             attributes.push(KeyValue {
                 key: "http.response.body".to_string(),
                 value: Some(AnyValue {
@@ -247,12 +372,12 @@ impl SpanBuilder {
                 }),
             });
         }
-        
+
         let span = Span {
             trace_id: self.trace_id.clone(),
             span_id,
             parent_span_id: self.parent_span_id.clone().unwrap_or_default(),
-            name: "agent_extract".to_string(),
+            name: url_path.unwrap_or("unknown_path").to_string(),
             kind: span::SpanKind::Server as i32,
             start_time_unix_nano: get_current_timestamp_nanos(),
             end_time_unix_nano: get_current_timestamp_nanos(),
@@ -264,14 +389,32 @@ impl SpanBuilder {
             flags: 0,
             ..Default::default()
         };
-        
+
         self.create_traces_data(span)
     }
 
     fn create_traces_data(&self, span: Span) -> TracesData {
+        // Create resource with service.name attribute
+        let service_name = if self.service_name.is_empty() {
+            "default-service".to_string()
+        } else {
+            self.service_name.clone()
+        };
+
+        let resource = Resource {
+            attributes: vec![KeyValue {
+                key: "service.name".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(service_name)),
+                }),
+            }],
+            dropped_attributes_count: 0,
+            entity_refs: vec![],
+        };
+
         TracesData {
             resource_spans: vec![ResourceSpans {
-                resource: Some(Resource::default()),
+                resource: Some(resource),
                 scope_spans: vec![ScopeSpans {
                     spans: vec![span],
                     ..Default::default()
@@ -280,7 +423,19 @@ impl SpanBuilder {
             }],
         }
     }
-}
+
+    /// Generate W3C traceparent header value
+    /// Format: 00-{trace_id}-{span_id}-{trace_flags}
+    pub fn generate_traceparent(&self, span_id: &[u8]) -> String {
+        let version = "00";
+        let trace_id_hex = hex_encode(&self.trace_id);
+        let span_id_hex = hex_encode(span_id);
+        let trace_flags = "01"; // sampled flag set
+        
+        format!("{}-{}-{}-{}", version, trace_id_hex, span_id_hex, trace_flags)
+    }
+
+    }
 
 pub fn serialize_traces_data(traces_data: &TracesData) -> Result<Vec<u8>, prost::EncodeError> {
     let mut buf = Vec::new();
@@ -304,7 +459,7 @@ fn generate_trace_id() -> Vec<u8> {
     trace_id
 }
 
-fn generate_span_id() -> Vec<u8> {
+pub fn generate_span_id() -> Vec<u8> {
     let mut span_id = vec![0u8; 8];
     
     // Use current timestamp as source of randomness
@@ -385,4 +540,8 @@ fn is_text_content(headers: &HashMap<String, String>) -> bool {
     } else {
         false
     }
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }

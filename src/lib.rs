@@ -36,8 +36,10 @@ pub struct ClientConfig {
 pub struct Config {
     pub sp_backend_url: String,
     pub enable_inject: bool,
+    pub service_name: String,       // 添加service_name字段
     pub traffic_direction: String,  // "inbound" 或 "outbound"
     pub collection_rules: Vec<CollectionRule>,
+    pub api_key: String,
 }
 
 impl Default for Config {
@@ -46,7 +48,9 @@ impl Default for Config {
             sp_backend_url: "http://o.softprobe.ai".to_string(),
             enable_inject: false,
             traffic_direction: "outbound".to_string(),
+            service_name: "default-service".to_string(), // 默认服务名
             collection_rules: vec![],
+            api_key: String::new(), // 默认空字符串
         }
     }
 }
@@ -110,6 +114,17 @@ impl RootContext for SpRootContext {
                         self.config.traffic_direction = direction.to_string();
                         log::info!("SP: Configured traffic direction: {}", self.config.traffic_direction);
                     }
+
+                    // 解析 service_name
+                    if let Some(service_name) = config_json.get("service_name").and_then(|v| v.as_str()) {
+                        self.config.service_name = service_name.to_string();
+                        log::info!("SP: Configured service name: {}", self.config.service_name);
+                    }
+                    if let Some(api_key) = config_json.get("api_key").and_then(|v| v.as_str()) {
+                        self.config.api_key = api_key.to_string();
+                        log::info!("SP: Configured API key: {}", self.config.api_key);
+                    }
+
 
                     // 解析 collectionRules
                     if let Some(rules) = config_json.get("collectionRules") {
@@ -195,6 +210,7 @@ struct SpHttpContext {
     response_body: Vec<u8>,
     span_builder: SpanBuilder,
     pending_inject_call_token: Option<u32>,
+    pending_save_call_token: Option<u32>,
     injected: bool,
     config: Config,
     url_host: Option<String>,
@@ -202,18 +218,22 @@ struct SpHttpContext {
 }
 
 impl SpHttpContext {
-
     fn new(context_id: u32, config: Config) -> Self {
+        let mut span_builder = SpanBuilder::new();
+        span_builder = span_builder
+            .with_service_name(config.service_name.clone())
+            .with_traffic_direction(config.traffic_direction.clone());
         Self {
             _context_id: context_id,
+            config: config,
             request_headers: HashMap::new(),
             request_body: Vec::new(),
             response_headers: HashMap::new(),
             response_body: Vec::new(),
-            span_builder: SpanBuilder::new(),
+            span_builder: span_builder,
             pending_inject_call_token: None,
+            pending_save_call_token: None,
             injected: false,
-            config,
             url_host: None,
             url_path: None,
         }
@@ -572,6 +592,7 @@ impl SpHttpContext {
         ) {
             Ok(call_id) => {
                 log::info!("SP Extraction: Async save dispatched with call_id: {}", call_id);
+                self.pending_save_call_token = Some(call_id);
                 Ok(())
             }
             Err(e) => {
@@ -580,6 +601,62 @@ impl SpHttpContext {
             }
         }
     }
+
+    /// Inject W3C Trace Context headers into the outgoing request
+    fn inject_trace_context_headers(&mut self) {
+        // Only inject if traceparent header is not already present
+        if !self.request_headers.contains_key("traceparent") {
+            // Generate a new span ID for this request
+            let span_id = crate::otel::generate_span_id();
+            
+            // Generate traceparent header
+            let traceparent = self.span_builder.generate_traceparent(&span_id);
+            log::info!("SP: Injecting traceparent header: {}", traceparent);
+            
+            // Add traceparent header to the request
+            let _ = self.add_http_request_header("traceparent", &traceparent);
+        } else {
+            log::info!("SP: traceparent header already present, skipping injection");
+        }
+    }
+
+    /// Extract and propagate W3C Trace Context from response headers
+    fn extract_and_propagate_trace_context(&mut self) {
+        // Check if response contains W3C Trace Context headers
+        if let Some(traceparent) = self.response_headers.get("traceparent") {
+            log::info!("SP: Found traceparent in response: {}", traceparent);
+            
+            // Update span builder with the response trace context
+            let mut updated_headers = HashMap::new();
+            updated_headers.insert("traceparent".to_string(), traceparent.clone());
+            
+            if let Some(tracestate) = self.response_headers.get("tracestate") {
+                log::info!("SP: Found tracestate in response: {}", tracestate);
+                updated_headers.insert("tracestate".to_string(), tracestate.clone());
+            }
+            
+            // Update the span builder with the response trace context
+            self.span_builder = self.span_builder.clone().with_context(&updated_headers);
+            
+            // Propagate trace context to downstream response
+            self.propagate_trace_context_to_response();
+        } else {
+            log::debug!("SP: No traceparent found in response headers");
+        }
+    }
+
+    /// Propagate trace context to the downstream response
+    fn propagate_trace_context_to_response(&mut self) {
+        // Generate a new span ID for the response
+        let span_id = crate::otel::generate_span_id();
+        
+        // Generate traceparent header for the response
+        let traceparent = self.span_builder.generate_traceparent(&span_id);
+        log::info!("SP: Propagating traceparent to response: {}", traceparent);
+        
+        // Add traceparent header to the response
+        let _ = self.add_http_response_header("traceparent", &traceparent);
+    }
 }
 
 impl Context for SpHttpContext {
@@ -587,10 +664,38 @@ impl Context for SpHttpContext {
     fn on_http_call_response(&mut self, token_id: u32, _num_headers: usize, body_size: usize, _num_trailers: usize) {
         log::info!("SP: *** HTTP CALL RESPONSE RECEIVED *** token: {}, body_size: {}", token_id, body_size);
         log::info!("SP: pending_inject_call_token = {:?}", self.pending_inject_call_token);
+        log::info!("SP: pending_save_call_token = {:?}", self.pending_save_call_token);
         log::info!("SP: All headers from response:");
         let response_headers = self.get_http_call_response_headers();
         for (key, value) in &response_headers {
             log::info!("SP:   {}: {}", key, value);
+        }
+
+        // Check if this is the response to our async save call
+        if let Some(pending_save_token) = self.pending_save_call_token {
+            if pending_save_token == token_id {
+                log::info!("SP: Processing async save response");
+                self.pending_save_call_token = None;
+                
+                // Get response status
+                let status_code = self.get_http_call_response_header(":status")
+                    .and_then(|s| s.parse::<u32>().ok())
+                    .unwrap_or(500);
+
+                log::info!("SP: Async save response status: {}", status_code);
+                
+                if status_code == 200 {
+                    log::info!("SP: Async save successful - traces data sent to OTEL Collector");
+                } else {
+                    log::warn!("SP: Async save failed with status: {}", status_code);
+                    if body_size > 0 {
+                        let response_body = self.get_http_call_response_body(0, body_size)
+                            .unwrap_or_default();
+                        log::warn!("SP: Error response body: {}", String::from_utf8_lossy(&response_body));
+                    }
+                }
+                return; // Don't process as injection response
+            }
         }
 
         // Check if this is the response to our agent lookup call
@@ -659,13 +764,28 @@ impl HttpContext for SpHttpContext {
             self.request_headers.insert(key, value);
         }
 
+        let traffic_direction = self.config.traffic_direction.clone() ;
+        let service_name = self.config.service_name.clone();
+        let api_key = self.config.api_key.clone();
+
+        log::info!("DEBUG: Before span builder update - service_name: '{}', traffic_direction: '{}', api_key: '{}'",
+                   service_name, traffic_direction, api_key);
+
         // Update url.host and url.path from properties/headers
         self.update_url_info();
 
-        // Update span builder with trace context
+        // Update span builder with trace context and session ID
         let headers_clone = self.request_headers.clone();
-        let span_builder = SpanBuilder::new().with_context(&headers_clone);
-        self.span_builder = span_builder;
+        log::info!("DEBUG: Available headers: {:?}", headers_clone.keys().collect::<Vec<_>>());
+
+        self.span_builder = self.span_builder.clone()
+            .with_service_name(service_name)
+            .with_traffic_direction(traffic_direction)
+            .with_api_key(api_key)
+            .with_context(&headers_clone);
+
+        // Inject W3C Trace Context headers if not already present
+        self.inject_trace_context_headers();
 
         // If this is the end of the stream (no body), perform injection lookup now
         if end_of_stream {
@@ -722,6 +842,9 @@ impl HttpContext for SpHttpContext {
         for (key, value) in self.get_http_response_headers() {
             self.response_headers.insert(key, value);
         }
+
+        // Extract and propagate W3C Trace Context from response headers
+        self.extract_and_propagate_trace_context();
 
         Action::Continue
     }

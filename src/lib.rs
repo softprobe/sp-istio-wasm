@@ -45,7 +45,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            sp_backend_url: "http://o.softprobe.ai".to_string(),
+            sp_backend_url: "https://o.softprobe.ai".to_string(),
             enable_inject: false,
             traffic_direction: "outbound".to_string(),
             service_name: "default-service".to_string(), // 默认服务名
@@ -526,7 +526,7 @@ impl SpHttpContext {
         // Use the context's dispatch_http_call method to maintain context
         // Using Envoy cluster name for HTTPS (configured via ServiceEntry)
         match self.dispatch_http_call(
-            "outbound|80||o.softprobe.ai",
+            "outbound|443||o.softprobe.ai",
             http_headers,
             Some(&otel_data),
             vec![],
@@ -585,7 +585,7 @@ impl SpHttpContext {
         // Fire and forget async call to /v1/traces endpoint for storage
         // Using Envoy cluster name for HTTPS (configured via ServiceEntry)
         match self.dispatch_http_call(
-            "outbound|80||o.softprobe.ai",
+            "outbound|443||o.softprobe.ai",
             http_headers,
             Some(&otel_data),
             vec![],

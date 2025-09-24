@@ -21,12 +21,12 @@ spec:
   # Use the public Docker Hub image (which contains the WASM binary)
   url: oci://docker.io/softprobe/sp-istio-wasm:v1.0.13-https
   sha256: "736b2c574ea820ebfe6e1b134e35c32b5fe534c98c2e24e8da468f86086f48fb"
-  phase: STATS  # Insert after authorization for telemetry/stats collection
+  phase: AUTHN  # Insert early for header injection and request control
   
   # Configuration for the WASM extension
   pluginConfig:
     # Backend Configuration
-    sp_backend_url: "http://o.softprobe.ai"
+    sp_backend_url: "https://o.softprobe.ai"
     enable_inject: false  
     traffic_direction: "outbound"  # Back to outbound for real testing
     service_name: "productpage-test"  # Service name for tracking

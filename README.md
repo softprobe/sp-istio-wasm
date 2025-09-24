@@ -8,6 +8,14 @@ This project extends Istio's capabilities by implementing a custom WASM extensio
 
 ## Quick Start
 
+### Minimal one-file install (cluster)
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio/main/deploy/sp-istio-agent-minimal.yaml
+```
+
+This installs the global WasmPlugin and the HTTPS ServiceEntry in one step.
+
 ### 1. Build the WASM Extension
 
 ```bash

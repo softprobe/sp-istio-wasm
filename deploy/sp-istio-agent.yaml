@@ -28,6 +28,22 @@ spec:
         client: []  # No client-side filtering (collect all outbound traffic)
 
 ---
+# ServiceEntry to register Softprobe backend over HTTPS (443)
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: softprobe-backend
+  namespace: istio-system
+spec:
+  hosts:
+  - o.softprobe.ai
+  ports:
+  - number: 443
+    name: https
+    protocol: HTTPS
+  location: MESH_EXTERNAL
+  resolution: DNS
+---
 # Alternative: Namespace-specific deployment
 # Uncomment and customize this section if you want to apply only to specific namespaces
 # 

@@ -2,6 +2,16 @@
 
 This directory contains Kubernetes manifests to deploy the Softprobe Istio WASM agent that records outbound HTTP traffic and (optionally) injects cached responses.
 
+## 🚀 Quick Start (Minimal one-file install)
+
+Apply the minimal global install (includes HTTPS `ServiceEntry`):
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio/main/deploy/sp-istio-agent-minimal.yaml
+```
+
+Your mesh’s outbound HTTP traffic will be recorded and sent to Softprobe over HTTPS.
+
 ## 🚀 Quick Start (Global)
 
 Deploy the agent globally across your mesh:
@@ -10,7 +20,7 @@ Deploy the agent globally across your mesh:
 kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio/main/deploy/sp-istio-agent.yaml
 ```
 
-Your mesh’s outbound HTTP traffic will be recorded and sent to Softprobe.
+Your mesh’s outbound HTTP traffic will be recorded and sent to Softprobe over HTTPS.
 
 ## 🧪 Try It With Istio Bookinfo (Scoped Test)
 
@@ -42,7 +52,9 @@ kubectl logs deploy/productpage-v1 -c istio-proxy | grep -E "SP|sp-istio" || tru
 ```
 
 Notes:
-- The test manifest includes a `ServiceEntry` for `o.softprobe.ai` so the sidecar can reach Softprobe. For global installs, ensure egress to Softprobe is allowed in your environment.
+- Both the global and test manifests include a `ServiceEntry` for `o.softprobe.ai` on port 443 (HTTPS) so sidecars can reach Softprobe securely.
+- The plugin uses the HTTPS cluster `outbound|443||o.softprobe.ai` and defaults `sp_backend_url` to `https://o.softprobe.ai`.
+- Ensure egress to `o.softprobe.ai:443` is allowed in your environment.
 - The test manifest pins a known-good image and sha. Use it as-is to validate, then switch to your own version when ready.
 
 ## 🎯 Deployment Modes

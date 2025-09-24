@@ -72,10 +72,21 @@ impl SpanBuilder {
     pub fn with_context(mut self, headers: &HashMap<String, String>) -> Self {
         // Extract trace context from headers if present
         if let Some(traceparent) = headers.get("traceparent") {
+            log::info!("DEBUG: Found traceparent header: {}", traceparent);
             if let Some((trace_id, span_id)) = parse_traceparent(traceparent) {
+                let trace_id_hex = hex_encode(&trace_id);
+                let parent_span_id_hex = hex_encode(&span_id);
+                log::info!("DEBUG: Parsed trace_id: {}", trace_id_hex);
+                log::info!("DEBUG: Parsed parent_span_id: {}", parent_span_id_hex);
                 self.trace_id = trace_id;
                 self.parent_span_id = Some(span_id);
+            } else {
+                log::warn!("DEBUG: Failed to parse traceparent header: {}", traceparent);
             }
+        } else {
+            log::info!("DEBUG: No traceparent header found, using default trace_id");
+            let trace_id_hex = hex_encode(&self.trace_id);
+            log::info!("DEBUG: Default trace_id: {}", trace_id_hex);
         }
 
         // Get session ID from headers directly
@@ -237,8 +248,9 @@ impl SpanBuilder {
         response_body: &[u8],
         url_host: Option<&str>,
         url_path: Option<&str>,
+        span_id: &[u8],
     ) -> TracesData {
-        let span_id = generate_span_id();
+        let span_id = span_id.to_vec();
         let mut attributes = Vec::new();
 
         log::info!("DEBUG: service_name value: '{}'", self.service_name);

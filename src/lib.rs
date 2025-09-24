@@ -215,6 +215,7 @@ struct SpHttpContext {
     config: Config,
     url_host: Option<String>,
     url_path: Option<String>,
+    current_wasm_span_id: Option<Vec<u8>>,
 }
 
 impl SpHttpContext {
@@ -236,6 +237,7 @@ impl SpHttpContext {
             injected: false,
             url_host: None,
             url_path: None,
+            current_wasm_span_id: None,
         }
     }
 
@@ -481,7 +483,7 @@ impl SpHttpContext {
     }
 
     // Dispatch injection HTTP call directly using context's dispatch_http_call method
-    fn dispatch_injection_lookup(&mut self) -> Result<u32, String> {
+    /*fn dispatch_injection_lookup(&mut self) -> Result<u32, String> {
         if !self.config.enable_inject {
             return Err("Injection is not allowed".to_string());
         }
@@ -532,7 +534,7 @@ impl SpHttpContext {
                 Err(format!("Dispatch failed: {:?}", e))
             }
         }
-    }
+    }*/
 
     // Dispatch async call to save extracted data
     fn dispatch_async_extraction_save(&mut self) -> Result<(), String> {
@@ -544,6 +546,11 @@ impl SpHttpContext {
         log::info!("SP: Storing agent data asynchronously");
 
         // Create extract span using references to avoid cloning
+        // Use the stored WASM span ID if available, otherwise generate a new one
+        let span_id = self.current_wasm_span_id.as_ref()
+            .map(|id| id.clone())
+            .unwrap_or_else(|| crate::otel::generate_span_id());
+            
         let traces_data = self.span_builder.create_extract_span(
             &self.request_headers,
             &self.request_body,
@@ -551,6 +558,7 @@ impl SpHttpContext {
             &self.response_body,
             self.url_host.as_deref(),
             self.url_path.as_deref(),
+            &span_id,
         );
 
         // Serialize to protobuf
@@ -594,20 +602,21 @@ impl SpHttpContext {
 
     /// Inject W3C Trace Context headers into the outgoing request
     fn inject_trace_context_headers(&mut self) {
-        // Only inject if traceparent header is not already present
-        if !self.request_headers.contains_key("traceparent") {
-            // Generate a new span ID for this request
-            let span_id = crate::otel::generate_span_id();
-            
-            // Generate traceparent header
-            let traceparent = self.span_builder.generate_traceparent(&span_id);
-            log::info!("SP: Injecting traceparent header: {}", traceparent);
-            
-            // Add traceparent header to the request
-            let _ = self.add_http_request_header("traceparent", &traceparent);
-        } else {
-            log::info!("SP: traceparent header already present, skipping injection");
-        }
+        // Always generate a new span ID for this WASM inbound span
+        let span_id = crate::otel::generate_span_id();
+        
+        // Generate traceparent header with the new span ID
+        let traceparent = self.span_builder.generate_traceparent(&span_id);
+        log::info!("SP: Injecting/updating traceparent header: {}", traceparent);
+        
+        // Remove existing traceparent header first, then add the new one
+        // This ensures we replace any existing traceparent with our new WASM span
+        let _ = self.remove_http_request_header("traceparent");
+        let _ = self.add_http_request_header("traceparent", &traceparent);
+        
+        // Store the span ID for later use in outbound span creation
+        // This ensures the outbound span uses the same span ID that was sent to the application
+        self.current_wasm_span_id = Some(span_id);
     }
 
     /// Extract and propagate W3C Trace Context from response headers
@@ -637,8 +646,12 @@ impl SpHttpContext {
 
     /// Propagate trace context to the downstream response
     fn propagate_trace_context_to_response(&mut self) {
-        // Generate a new span ID for the response
-        let span_id = crate::otel::generate_span_id();
+        // Use the stored WASM span ID if available, otherwise generate a new one
+        let span_id = if let Some(ref stored_span_id) = self.current_wasm_span_id {
+            stored_span_id.clone()
+        } else {
+            crate::otel::generate_span_id()
+        };
         
         // Generate traceparent header for the response
         let traceparent = self.span_builder.generate_traceparent(&span_id);
@@ -777,7 +790,7 @@ impl HttpContext for SpHttpContext {
         self.inject_trace_context_headers();
 
         // If this is the end of the stream (no body), perform injection lookup now
-        if end_of_stream {
+        /*if end_of_stream {
             log::info!("SP Injection: No request body, performing injection lookup immediately");
             match self.dispatch_injection_lookup() {
                 Ok(call_id) => {
@@ -789,7 +802,7 @@ impl HttpContext for SpHttpContext {
                     log::error!("SP Injection: Injection lookup error: {}, continuing to upstream", e);
                 }
             }
-        }
+        }*/
 
         Action::Continue
     }
@@ -802,7 +815,7 @@ impl HttpContext for SpHttpContext {
             self.request_body.extend_from_slice(&body);
         }
 
-        if end_of_stream {
+        /*if end_of_stream {
             // Perform async injection lookup
             match self.dispatch_injection_lookup() {
                 Ok(call_id) => {
@@ -814,7 +827,7 @@ impl HttpContext for SpHttpContext {
                     log::error!("SP Injection: Injection lookup error: {}, continuing to upstream", e);
                 }
             }
-        }
+        }*/
 
         Action::Continue
     }

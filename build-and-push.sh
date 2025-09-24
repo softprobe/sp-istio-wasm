@@ -30,6 +30,18 @@ if ! rustup target list --installed | grep -q "wasm32-unknown-unknown"; then
     rustup target add wasm32-unknown-unknown
 fi
 
+VERSION=$1
+ENVOY_IMAGE_NAME="sp-envoy"
+WASM_IMAGE_NAME="sp-istio-wasm"
+DOCKERHUB_REGISTRY="softprobe"
+WASM_FULL_IMAGE_NAME="${DOCKERHUB_REGISTRY}/${WASM_IMAGE_NAME}:${VERSION}"
+ENVOY_FULL_IMAGE_NAME="${DOCKERHUB_REGISTRY}/${ENVOY_IMAGE_NAME}:${VERSION}"
+
+if [ -z "$VERSION" ]; then
+    print_error "Version is required"
+    exit 1
+fi
+
 # Clean previous build
 print_status "Cleaning previous build..."
 cargo clean
@@ -71,17 +83,9 @@ else
     exit 1
 fi
 
-VERSION=$1
-GCR_IMAGE_NAME="sp-envoy"
-DOCKERHUB_IMAGE_NAME="sp-istio-wasm"
-GCR_REGISTRY="gcr.io/cs-poc-sasxbttlzroculpau4u6e2l"
-DOCKERHUB_REGISTRY="softprobe"
-GCR_FULL_IMAGE_NAME="${GCR_REGISTRY}/${GCR_IMAGE_NAME}:${VERSION}"
-DOCKERHUB_FULL_IMAGE_NAME="${DOCKERHUB_REGISTRY}/${DOCKERHUB_IMAGE_NAME}:${VERSION}"
-
 echo "🚀 Starting Docker build and push process..."
-echo "📦 GCR Image: ${GCR_FULL_IMAGE_NAME}"
-echo "📦 Docker Hub Image: ${DOCKERHUB_FULL_IMAGE_NAME}"
+echo "📦 WASMImage: ${WASM_FULL_IMAGE_NAME}"
+echo "📦 ENVOY Image: ${ENVOY_FULL_IMAGE_NAME}"
 echo "🏷️  Version: ${VERSION}"
 echo ""
 
@@ -91,37 +95,22 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
-# Check if gcloud is authenticated
-if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" | grep -q .; then
-    echo "❌ Error: Not authenticated with Google Cloud. Please run 'gcloud auth login' first"
-    exit 1
-fi
-
-# Configure Docker to use gcloud as a credential helper
-echo "🔐 Configuring Docker authentication with Google Cloud..."
-gcloud auth configure-docker
-
 echo "🔨 Building Docker image..."
-docker build --platform linux/amd64 -t ${GCR_IMAGE_NAME}:${VERSION} .
-
-echo "🏷️  Tagging images for both registries..."
-docker tag ${GCR_IMAGE_NAME}:${VERSION} ${GCR_FULL_IMAGE_NAME}
-docker tag ${GCR_IMAGE_NAME}:${VERSION} ${DOCKERHUB_FULL_IMAGE_NAME}
-
-echo "📤 Pushing image to Google Container Registry..."
-docker push ${GCR_FULL_IMAGE_NAME}
+docker build -t ${WASM_FULL_IMAGE_NAME} -f Dockerfile .
+docker build -t ${ENVOY_FULL_IMAGE_NAME} -f Dockerfile.envoy .
 
 echo "📤 Pushing image to Docker Hub..."
-docker push ${DOCKERHUB_FULL_IMAGE_NAME}
+docker push ${WASM_FULL_IMAGE_NAME}
+docker push ${ENVOY_FULL_IMAGE_NAME}
 
 echo "✅ Successfully built and pushed to both registries:"
-echo "   📦 GCR: ${GCR_FULL_IMAGE_NAME}"
-echo "   📦 Docker Hub: ${DOCKERHUB_FULL_IMAGE_NAME}"
+echo "   📦 WASM: ${WASM_FULL_IMAGE_NAME}"
+echo "   📦 ENVOY: ${ENVOY_FULL_IMAGE_NAME}"
 
 # Clean up local tags
 echo "🧹 Cleaning up local tags..."
-docker rmi ${GCR_IMAGE_NAME}:${VERSION} ${GCR_FULL_IMAGE_NAME} ${DOCKERHUB_FULL_IMAGE_NAME}
+docker rmi ${WASM_FULL_IMAGE_NAME} ${ENVOY_FULL_IMAGE_NAME}
 
 echo "🎉 Done! Images are now available in both registries:"
-echo "   🔒 Private GCR: ${GCR_FULL_IMAGE_NAME}"
-echo "   🌍 Public Docker Hub: ${DOCKERHUB_FULL_IMAGE_NAME}"
+echo "   🔒 WASM: ${WASM_FULL_IMAGE_NAME}"
+echo "   🌍 ENVOY: ${ENVOY_FULL_IMAGE_NAME}"

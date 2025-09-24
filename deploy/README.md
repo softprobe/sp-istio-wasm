@@ -1,63 +1,66 @@
-# Softprobe Istio Agent - Quick Deployment
+# Softprobe Istio Agent - Deploying the WASM Plugin
 
-This directory contains deployment configurations for the Softprobe Istio WASM agent that enables transparent HTTP traffic recording and caching.
+This directory contains Kubernetes manifests to deploy the Softprobe Istio WASM agent that records outbound HTTP traffic and (optionally) injects cached responses.
 
-## 🚀 One-Click Installation
+## 🚀 Quick Start (Global)
 
-Deploy the agent globally across your Istio mesh:
+Deploy the agent globally across your mesh:
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio/main/deploy/sp-istio-agent.yaml
 ```
 
-That's it! Your HTTP traffic will now be automatically recorded and sent to Softprobe's backend.
+Your mesh’s outbound HTTP traffic will be recorded and sent to Softprobe.
 
-## 📊 What This Does
+## 🧪 Try It With Istio Bookinfo (Scoped Test)
 
-- **Captures all outbound HTTP traffic** from your services
-- **Records request/response headers and bodies** 
-- **Sends telemetry data** to `https://o.softprobe.ai` asynchronously
-- **Stores data in S3/GCS** automatically via Softprobe backend
-- **Zero application code changes** required
+Use the provided `deploy/test-bookinfo.yaml` to scope the plugin to the `productpage` service in the `default` namespace.
 
-## 🎯 Deployment Options
-
-### Global Deployment (Recommended)
-The default configuration applies to all services in your mesh:
-- Deployed in `istio-system` namespace
-- No selector = applies globally
-- Captures all outbound HTTP traffic
-
-### Namespace-Specific Deployment
-Uncomment the namespace-specific section in the YAML to apply only to certain namespaces:
-```yaml
-metadata:
-  namespace: production  # Your target namespace
+1) Install Istio and the Bookinfo demo (if not already):
+```bash
+# Install Istio (see Istio docs for your platform) and enable sidecar injection
+kubectl label namespace default istio-injection=enabled --overwrite
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/bookinfo/networking/bookinfo-gateway.yaml
 ```
 
-### Service-Specific Deployment  
-Use selectors to target specific services:
-```yaml
-spec:
-  selector:
-    matchLabels:
-      app: my-service
+2) Deploy the plugin scoped to `productpage` and register the Softprobe backend:
+```bash
+kubectl apply -f deploy/test-bookinfo.yaml
 ```
 
-## ⚙️ Configuration Options
-
-### Traffic Direction
-```yaml
-traffic_direction: "outbound"  # or "inbound"
+3) Generate traffic:
+```bash
+export GATEWAY_URL=$(kubectl -n istio-system get svc istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+curl -sf "http://${GATEWAY_URL}/productpage" >/dev/null
 ```
 
-### Enable Cache Injection
-```yaml
-enable_inject: true  # Enable transparent caching (use with caution)
+4) Verify:
+```bash
+kubectl get wasmplugin -A
+kubectl logs deploy/productpage-v1 -c istio-proxy | grep -E "SP|sp-istio" || true
 ```
 
-### Collection Rules
-Filter which traffic to capture:
+Notes:
+- The test manifest includes a `ServiceEntry` for `o.softprobe.ai` so the sidecar can reach Softprobe. For global installs, ensure egress to Softprobe is allowed in your environment.
+- The test manifest pins a known-good image and sha. Use it as-is to validate, then switch to your own version when ready.
+
+## 🎯 Deployment Modes
+
+- **Global (Recommended)**: `deploy/sp-istio-agent.yaml` (namespace `istio-system`, no selector)
+- **Namespace-specific**: set `metadata.namespace` in the manifest
+- **Service-specific**: use `spec.selector.matchLabels` to target workloads
+
+## ⚙️ Key Configuration
+
+Within `spec.pluginConfig`:
+- `sp_backend_url`: Softprobe backend URL (e.g., `https://o.softprobe.ai`)
+- `enable_inject`: enable response injection when the agent hits
+- `traffic_direction`: usually `outbound`
+- `service_name`, `api_key`: optional identification fields
+- `collectionRules.http.client`: filter which outbound traffic to record
+
+Example rule:
 ```yaml
 collectionRules:
   http:
@@ -68,34 +71,35 @@ collectionRules:
 
 ## 🔍 Verification
 
-Check that the plugin is loaded:
 ```bash
 kubectl get wasmplugin -A
-kubectl logs -n istio-system deployment/istiod | grep sp-istio
+kubectl logs -n istio-system deploy/istiod | grep sp-istio || true
 ```
 
-View captured traffic in your Softprobe dashboard at `https://o.softprobe.ai`.
+If using a scoped deployment, also check the target workload’s proxy logs:
+```bash
+kubectl logs deploy/<workload> -c istio-proxy | grep -E "SP|sp-istio" || true
+```
+
+## 🧹 Uninstall
+
+```bash
+# Global install
+kubectl delete -f deploy/sp-istio-agent.yaml || true
+
+# Bookinfo test
+kubectl delete -f deploy/test-bookinfo.yaml || true
+```
 
 ## 🛠️ Troubleshooting
 
-### Plugin Not Loading
-1. Verify Istio version compatibility (1.18+)
-2. Check WASM binary accessibility
-3. Review istiod logs for errors
-
-### No Traffic Captured
-1. Ensure services have Istio sidecars injected
-2. Verify traffic direction configuration
-3. Check collection rules match your traffic patterns
-
-### Performance Impact
-- The agent buffers request/response bodies for analysis
-- Monitor memory usage if handling large payloads
-- Use collection rules to filter unnecessary traffic
+- Ensure Istio sidecars are injected in the target namespace/workloads
+- Confirm the WASM image and `sha256` are accessible from your cluster
+- If egress is restricted, add a `ServiceEntry` for `o.softprobe.ai`
+- Check that `traffic_direction` and `collectionRules` match your traffic
 
 ## 📋 Requirements
 
 - Istio 1.18+
-- Kubernetes cluster with Istio mesh
-- Internet connectivity to `gcr.io` and `https://o.softprobe.ai`
-- Kubernetes cluster access to Google Container Registry (for pulling WASM binary)
+- Kubernetes cluster with Istio installed
+- Egress access to `o.softprobe.ai` and your container registry

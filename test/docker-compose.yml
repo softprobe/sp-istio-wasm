@@ -15,13 +15,13 @@ services:
       - https_proxy=http://envoy-dict-app:15001
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:
-      - "8080:80"
+      - "8080:8080"
     # 如果您希望入站流量也经过 Envoy，可以在应用中显式调用
     # 例如：curl http://envoy-dict-app:15006/your-endpoint
 
   # dict-app 的 Envoy sidecar
   envoy-dict-app:
-    image: gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/sp-envoy:v1.1.6
+    image: softprobe/sp-envoy:v1.0.9-test
     volumes:
       - ./envoy.yaml:/etc/envoy/envoy.yaml
       - ../target/wasm32-unknown-unknown/release/sp_istio_agent.wasm:/etc/envoy/sp_istio_agent.wasm

@@ -122,6 +122,14 @@ impl SpanBuilder {
             }),
         });
 
+        // Add span type attribute
+        attributes.push(KeyValue {
+            key: "span.type".to_string(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue("sp-envoy-proxy".to_string())),
+            }),
+        });
+
         // Add traffic direction attribute
         attributes.push(KeyValue {
             key: "sp.traffic.direction".to_string(),
@@ -249,7 +257,16 @@ impl SpanBuilder {
                 value: Some(any_value::Value::StringValue(self.traffic_direction.clone())),
             }),
         });
+
         // Add span type attribute
+        attributes.push(KeyValue {
+            key: "span.type".to_string(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue("sp-envoy-proxy".to_string())),
+            }),
+        });
+
+        // Add extract span type attribute
         attributes.push(KeyValue {
             key: "sp.span.type".to_string(),
             value: Some(AnyValue {

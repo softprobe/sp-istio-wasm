@@ -44,20 +44,16 @@ else
     echo "✅ Jaeger 启动完成"
 fi
 
-# 5. 应用 Istio 网格配置
-echo "⚙️  应用 Istio 网格配置..."
-kubectl apply -f istio-mesh-config.yaml
-echo "✅ Istio 网格配置已应用"
-
-# 6. 创建 Jaeger ServiceEntry
+# 5. 创建 Jaeger ServiceEntry
 echo "🔗 创建 Jaeger ServiceEntry..."
 kubectl apply -f jaeger-service-entry.yaml
 echo "✅ Jaeger ServiceEntry 已创建"
 
 echo ""
-echo "🎉 环境设置完成！"
+echo "🎉 基础环境设置完成！"
 echo ""
 echo "📋 下一步操作："
-echo "1. 运行 ./deploy-apps.sh 部署应用"
-echo "2. 运行 ./start-port-forward.sh 启动端口转发"
-echo "3. 访问 http://localhost:8080 测试应用"
+echo "1. 运行 ./deploy-apps.sh 部署 Bookinfo 应用"
+echo "2. 运行 ./install-wasm.sh 安装 WASM 插件"
+echo "3. 运行 ./start-port-forward.sh 启动端口转发"
+echo "4. 访问 http://localhost:8080/productpage 测试应用"

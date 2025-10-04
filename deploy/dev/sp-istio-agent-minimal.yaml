@@ -15,9 +15,9 @@ spec:
     - mode: SERVER
     - mode: CLIENT
   pluginConfig:
-    service_name: "demo-ota-11111"
-    api_key: "demo-ota-0111"
-    sp_backend_url: "https://o.softprobe.ai"
+    service_name: "demo-ota-111111"
+    api_key: "demo-ota-01"
+    sp_backend_url: "https://jaeger.softprobe.ai/"
     enable_inject: false
     collectionRules:
       http:

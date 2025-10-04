@@ -1,0 +1,20 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: envoy-debug-log
+  namespace: istio-system
+spec:
+  configPatches:
+  - applyTo: BOOTSTRAP
+    patch:
+      operation: MERGE
+      value:
+        admin:
+          access_log_path: /dev/null
+          address:
+            socket_address:
+              address: 127.0.0.1
+              port_value: 15000
+        # 配置 Envoy 日志级别为 debug，特别是 WASM 相关的日志
+        # 注意：这个配置可能不会被 Istio 完全支持，因为 Istio 有自己的日志管理机制
+        # 更推荐的方式是通过 Istio 的 telemetry API 或者在 Pod 级别设置环境变量

@@ -37,7 +37,7 @@ pub struct Config {
     pub sp_backend_url: String,
     pub enable_inject: bool,
     pub service_name: String,       // 添加service_name字段
-    pub traffic_direction: String,  // "inbound" 或 "outbound"
+    pub traffic_direction: Option<String>,  // 改为可选字段
     pub collection_rules: Vec<CollectionRule>,
     pub api_key: String,
 }
@@ -47,7 +47,7 @@ impl Default for Config {
         Self {
             sp_backend_url: "https://o.softprobe.ai".to_string(),
             enable_inject: false,
-            traffic_direction: "outbound".to_string(),
+            traffic_direction: None,  // 默认为 None，表示自动检测
             service_name: "default-service".to_string(), // 默认服务名
             collection_rules: vec![],
             api_key: String::new(), // 默认空字符串
@@ -111,8 +111,8 @@ impl RootContext for SpRootContext {
 
                     // 解析 traffic_direction
                     if let Some(direction) = config_json.get("traffic_direction").and_then(|v| v.as_str()) {
-                        self.config.traffic_direction = direction.to_string();
-                        log::info!("SP: Configured traffic direction: {}", self.config.traffic_direction);
+                        self.config.traffic_direction = Some(direction.to_string());
+                        log::info!("SP: Configured traffic direction: {:?}", self.config.traffic_direction);
                     }
 
                     // 解析 service_name
@@ -222,7 +222,7 @@ impl SpHttpContext {
         let mut span_builder = SpanBuilder::new();
         span_builder = span_builder
             .with_service_name(config.service_name.clone())
-            .with_traffic_direction(config.traffic_direction.clone());
+            .with_traffic_direction(config.traffic_direction.clone().unwrap_or_else(|| "auto".to_string()));
         Self {
             _context_id: context_id,
             config: config,
@@ -276,107 +276,110 @@ impl SpHttpContext {
             return true;
         }
         log::info!("SP: Checking collection rules, total rules: {}", self.config.collection_rules.len());
-        // 根据流量方向应用不同规则
-        match self.config.traffic_direction.as_str() {
-            "inbound" => {
-                log::info!("SP: process inbound");
-                if let Some(request_path) = self.request_headers.get(":path") {
-                    // 获取当前请求路径
-                    log::debug!("SP: Checking collection rules for path: {}, traffic_direction: {}",request_path, self.config.traffic_direction);
-                    // Server 流量：只匹配 server_path
-                    log::debug!("SP: Processing inbound traffic rules, request_path: {}", request_path);
-                    for (i, rule) in self.config.collection_rules.iter().enumerate() {
-                        // 检查规则是否为服务器规则（path不为空）
-                        if !rule.http.server.path.is_empty() {
-                            log::debug!("SP: Checking inbound rule {}: serverPath='{}'", i, rule.http.server.path);
-                            if self.match_pattern(&rule.http.server.path, request_path) {
-                                log::debug!("SP: Inbound request matched server_path: {}", rule.http.server.path);
-                                return true;
-                            }
-                        }
-                    }
-                    log::info!("SP: No inbound rules matched for path: {}", request_path);
-                    return false;
-                }
-
-            }
-            "outbound" => {
-                log::info!("SP: process outbound");
-                // Client 流量：需要匹配 client_host 和 client_paths
-                let (client_host, client_path) = self.extract_client_info();
-
-                for (i, rule) in self.config.collection_rules.iter().enumerate() {
-                    // 处理客户端规则（检查client数组不为空）
-                    if !rule.http.client.is_empty() {
-                        for client_config in &rule.http.client {
-                            log::debug!("SP: Checking outbound rule {}: clientHost={}, clientPaths={:?}",
-                                       i, client_config.host, client_config.paths);
-
-                            // 检查 client_host
-                            if let Some(ref actual_client_host) = client_host {
-                                if !self.match_pattern(&client_config.host, actual_client_host) {
-                                    log::debug!("SP: Client host did not match: expected={}, actual={}",
-                                               client_config.host, actual_client_host);
-                                    continue;
-                                }
-                            } else {
-                                log::debug!("SP: No client host info available, but rule requires it");
-                                continue;
-                            }
-
-                            log::debug!("SP: Client host matched");
-
-                            // 检查 client_paths（如果配置了）
-                            if !client_config.paths.is_empty() {
-                                log::debug!("SP: Rule requires client paths: {:?}", client_config.paths);
-                                let client_path_matched = if let Some(ref actual_client_path) = client_path {
-                                    let matched = client_config.paths.iter().any(|client_path| {
-                                        let matches = self.match_pattern(client_path, actual_client_path);
-                                        log::debug!("SP: Client path match check: pattern='{}', text='{}', result={}",
-                                                   client_path, actual_client_path, matches);
-                                        matches
-                                    });
-                                    log::debug!("SP: Client path matched any: {}", matched);
-                                    matched
-                                } else {
-                                    log::debug!("SP: No client path info available");
-                                    false
-                                };
-
-                                if !client_path_matched {
-                                    log::info!("SP: Client paths did not match");
-                                    continue;
-                                }
-                            } else {
-                                log::info!("SP: Rule does not require client paths");
-                            }
-
-                            log::info!("SP: Outbound request matched all criteria - client_host: {}, client_paths: {:?}",
-                                      client_config.host, client_config.paths);
-                            return true;
-                        }
+        
+        // 智能检测流量方向：尝试两种规则类型
+        let mut inbound_matched = false;
+        let mut outbound_matched = false;
+        
+        // 首先尝试 inbound 规则匹配
+        if let Some(request_path) = self.request_headers.get(":path") {
+            log::debug!("SP: Checking inbound rules for path: {}", request_path);
+            
+            for (i, rule) in self.config.collection_rules.iter().enumerate() {
+                // 检查是否有服务器规则（path不为空）
+                if !rule.http.server.path.is_empty() {
+                    log::debug!("SP: Checking inbound rule {}: serverPath='{}'", i, rule.http.server.path);
+                    if self.match_pattern(&rule.http.server.path, request_path) {
+                        log::debug!("SP: Inbound request matched server_path: {}", rule.http.server.path);
+                        inbound_matched = true;
+                        break;
                     }
                 }
-
-                // 检查是否有任何适用的客户端规则
-                let has_client_rules = self.config.collection_rules.iter().any(|rule| !rule.http.client.is_empty());
-                if has_client_rules {
-                    log::info!("SP: No outbound rules matched, not collecting");
-                    return false;
-                } else {
-                    log::info!("SP: No client rules configured, collecting all outbound requests");
-                    return true;
-                }
             }
-            _ => {
-                log::warn!("SP: Unknown traffic direction: {}", self.config.traffic_direction);
-                return false;
-            }
-
         }
+        
+        // 然后尝试 outbound 规则匹配
+        let (client_host, client_path) = self.extract_client_info();
+        log::debug!("SP: Checking outbound rules with client_host: {:?}, client_path: {:?}", client_host, client_path);
+        
+        for (i, rule) in self.config.collection_rules.iter().enumerate() {
+            // 处理客户端规则（检查client数组不为空）
+            if !rule.http.client.is_empty() {
+                for client_config in &rule.http.client {
+                    log::debug!("SP: Checking outbound rule {}: clientHost={}, clientPaths={:?}",
+                               i, client_config.host, client_config.paths);
 
-        // 无法确定路径，默认不采集
-        log::warn!("SP: Unable to determine request path, not collecting");
+                    // 检查 client_host
+                    if let Some(ref actual_client_host) = client_host {
+                        if !self.match_pattern(&client_config.host, actual_client_host) {
+                            log::debug!("SP: Client host did not match: expected={}, actual={}",
+                                       client_config.host, actual_client_host);
+                            continue;
+                        }
+                    } else {
+                        log::debug!("SP: No client host info available, but rule requires it");
+                        continue;
+                    }
+
+                    log::debug!("SP: Client host matched");
+
+                    // 检查 client_paths（如果配置了）
+                    if !client_config.paths.is_empty() {
+                        log::debug!("SP: Rule requires client paths: {:?}", client_config.paths);
+                        let client_path_matched = if let Some(ref actual_client_path) = client_path {
+                            let matched = client_config.paths.iter().any(|client_path| {
+                                let matches = self.match_pattern(client_path, actual_client_path);
+                                log::debug!("SP: Client path match check: pattern='{}', text='{}', result={}",
+                                           client_path, actual_client_path, matches);
+                                matches
+                            });
+                            log::debug!("SP: Client path matched any: {}", matched);
+                            matched
+                        } else {
+                            log::debug!("SP: No client path info available");
+                            false
+                        };
+
+                        if !client_path_matched {
+                            log::info!("SP: Client paths did not match");
+                            continue;
+                        }
+                    } else {
+                        log::info!("SP: Rule does not require client paths");
+                    }
+
+                    log::info!("SP: Outbound request matched all criteria - client_host: {}, client_paths: {:?}",
+                              client_config.host, client_config.paths);
+                    outbound_matched = true;
+                    break;
+                }
+                if outbound_matched {
+                    break;
+                }
+            }
+        }
+        
+        // 根据匹配结果决定是否采集
+        if inbound_matched {
+            log::info!("SP: Request matched inbound rules, collecting");
+            return true;
+        }
+        
+        if outbound_matched {
+            log::info!("SP: Request matched outbound rules, collecting");
+            return true;
+        }
+        
+        // 检查是否有任何规则配置
+        let has_server_rules = self.config.collection_rules.iter().any(|rule| !rule.http.server.path.is_empty());
+        let has_client_rules = self.config.collection_rules.iter().any(|rule| !rule.http.client.is_empty());
+        
+        if !has_server_rules && !has_client_rules {
+            log::info!("SP: No specific rules configured, collecting all requests");
+            return true;
+        }
+        
+        log::info!("SP: No rules matched, not collecting");
         false
     }
 
@@ -487,6 +490,25 @@ impl SpHttpContext {
         }
     }
 
+    // Build Envoy cluster name from backend URL
+    fn get_backend_cluster_name(&self) -> String {
+        match Url::parse(&self.config.sp_backend_url) {
+            Ok(url) => {
+                if let Some(host) = url.host_str() {
+                    let port = match url.scheme() {
+                        "https" => url.port().unwrap_or(443),
+                        "http" => url.port().unwrap_or(80),
+                        _ => url.port().unwrap_or(80),
+                    };
+                    format!("outbound|{}||{}", port, host)
+                } else {
+                    "outbound|443||o.softprobe.ai".to_string()
+                }
+            }
+            Err(_) => "outbound|443||o.softprobe.ai".to_string(),
+        }
+    }
+
     // Dispatch injection HTTP call directly using context's dispatch_http_call method
     fn dispatch_injection_lookup(&mut self) -> Result<u32, String> {
         if !self.config.enable_inject {
@@ -524,9 +546,12 @@ impl SpHttpContext {
         log::info!("SP Injection: Authority: {}, Headers: {:?}", authority, http_headers);
 
         // Use the context's dispatch_http_call method to maintain context
-        // Using Envoy cluster name for HTTPS (configured via ServiceEntry)
+        // Using dynamically built Envoy cluster name based on backend URL
+        let cluster_name = self.get_backend_cluster_name();
+        log::info!("SP Injection: Using cluster name: {}", cluster_name);
+        
         match self.dispatch_http_call(
-            "outbound|4318||host.docker.internal",
+            &cluster_name,
             http_headers,
             Some(&otel_data),
             vec![],
@@ -583,9 +608,12 @@ impl SpHttpContext {
         log::info!("SP Extraction: Authority: {}, Headers: {:?}", authority, http_headers);
 
         // Fire and forget async call to /v1/traces endpoint for storage
-        // Using Envoy cluster name for HTTPS (configured via ServiceEntry)
+        // Using dynamically built Envoy cluster name based on backend URL
+        let cluster_name = self.get_backend_cluster_name();
+        log::info!("SP Extraction: Using cluster name: {}", cluster_name);
+        
         match self.dispatch_http_call(
-            "outbound|4318||host.docker.internal",
+            &cluster_name,
             http_headers,
             Some(&otel_data),
             vec![],
@@ -765,7 +793,7 @@ impl HttpContext for SpHttpContext {
             self.request_headers.insert(key, value);
         }
 
-        let traffic_direction = self.config.traffic_direction.clone() ;
+        let traffic_direction = self.config.traffic_direction.clone().unwrap_or_else(|| "auto".to_string());
         let service_name = self.config.service_name.clone();
         let api_key = self.config.api_key.clone();
 

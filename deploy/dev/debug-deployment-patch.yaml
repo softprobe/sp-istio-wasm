@@ -1,0 +1,32 @@
+# 通过 Deployment 补丁在 Pod 级别设置 Envoy 日志级别
+# 这是最直接有效的方法
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-ota
+  namespace: default
+spec:
+  template:
+    metadata:
+      annotations:
+        # 设置 Istio 代理日志级别
+        sidecar.istio.io/logLevel: "debug"
+        # 设置 Envoy 访问日志
+        sidecar.istio.io/accessLogFile: "/dev/stdout"
+    spec:
+      containers:
+      - name: istio-proxy
+        env:
+        # 设置 Envoy 日志级别
+        - name: PILOT_ENABLE_WORKLOAD_ENTRY_AUTOREGISTRATION
+          value: "true"
+        - name: ENVOY_LOG_LEVEL
+          value: "debug"
+        - name: WASM_LOG_LEVEL  
+          value: "debug"
+        # 启用 WASM 调试
+        - name: PILOT_ENABLE_WASM_TELEMETRY_V2
+          value: "true"
+        # 启用详细的 Envoy 日志
+        - name: BOOTSTRAP_XDS_AGENT
+          value: "true"

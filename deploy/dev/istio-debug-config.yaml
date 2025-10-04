@@ -1,0 +1,79 @@
+# Istio 调试日志配置
+# 
+# 方法1: 通过 Telemetry API 配置日志级别 (推荐)
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: debug-logging
+  namespace: istio-system
+spec:
+  # 应用到所有工作负载
+  accessLogging:
+  - providers:
+    - name: otel
+---
+# 方法2: 通过 EnvoyFilter 配置 (实验性)
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: wasm-debug-logging
+  namespace: istio-system
+spec:
+  # 只应用到有 demo-ota 标签的 Pod
+  workloadSelector:
+    labels:
+      app: demo-ota
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_INBOUND
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.wasm
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.wasm.v3.Wasm
+          config:
+            name: "debug-logger"
+            root_id: "debug_logger"
+            vm_config:
+              vm_id: "debug_logger"
+              runtime: "envoy.wasm.runtime.v8"
+              environment_variables:
+                ENVOY_LOG_LEVEL: "debug"
+                WASM_LOG_LEVEL: "debug"
+---
+# 方法3: 通过 ConfigMap 修改 Istio 全局配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: istio-debug
+  namespace: istio-system
+data:
+  mesh: |
+    defaultConfig:
+      discoveryAddress: istiod.istio-system.svc:15012
+      # 设置代理日志级别
+      proxyStatsMatcher:
+        inclusionRegexps:
+        - ".*circuit_breakers.*"
+        - ".*upstream_rq_retry.*"
+        - ".*_cx_.*"
+      # 启用调试日志
+      defaultProviders:
+        metrics:
+        - prometheus
+      # 全局代理配置
+      meshConfig:
+        defaultConfig:
+          # 设置 Envoy 访问日志格式
+          accessLogFile: /dev/stdout
+          # 启用调试模式
+          concurrency: 2
+    enablePrometheusMerge: true
+    rootNamespace: istio-system
+    trustDomain: cluster.local

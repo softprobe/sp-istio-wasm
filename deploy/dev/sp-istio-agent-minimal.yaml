@@ -5,15 +5,33 @@ metadata:
   name: sp-istio-agent
   namespace: istio-system
 spec:
+  selector:
+    matchLabels:
+      app: demo-ota
   url: http://host.docker.internal:8000/sp_istio_agent.wasm
-  sha256: "a91df8cc651e7557bd146cdf83fffef1e4fe4a37165adcc3da47fd31ecfa91a3"  # optional, recommended for production pinning
+  sha256: 48a0943e73d55010470a1e40ddf92265fb40e61baccb062235ab2127f03b3517
   phase: AUTHN
+  match:
+    - mode: SERVER
+    - mode: CLIENT
   pluginConfig:
+    service_name: "demo-ota-1"
+    api_key: "demo-ota-01"
     sp_backend_url: "https://jaeger.softprobe.ai/"
-    traffic_direction: "outbound"
     enable_inject: false
-    api_key: ""  # API密钥，将在安装时设置
-
+    collectionRules:
+      http:
+        server:
+          - path: ".*"
+        client:
+          - host: ".*"
+            paths: [".*"]
+  vmConfig:
+    env:
+      - name: ENVOY_LOG_LEVEL
+        value: "debug"
+      - name: WASM_LOG_LEVEL
+        value: "debug"
 ---
 apiVersion: networking.istio.io/v1beta1
 kind: ServiceEntry
@@ -22,10 +40,13 @@ metadata:
   namespace: istio-system
 spec:
   hosts:
-  - host.docker.internal
+  - jaeger.softprobe.ai
   ports:
-  - number: 4318
-    name: http
+  - number: 443
+    name: https
+    protocol: HTTPS
+  - number: 14268
+    name: jaeger-collector
     protocol: HTTP
   location: MESH_EXTERNAL
   resolution: DNS

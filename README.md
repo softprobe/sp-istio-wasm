@@ -8,6 +8,14 @@ This project extends Istio's capabilities by implementing a custom WASM extensio
 
 ## Quick Start
 
+### Minimal one-file install (cluster)
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio/main/deploy/sp-istio-agent-minimal.yaml
+```
+
+This installs the global WasmPlugin and the HTTPS ServiceEntry in one step.
+
 ### 1. Build the WASM Extension
 
 ```bash
@@ -33,15 +41,28 @@ This will:
 
 ### 3. Deploy to Istio
 
+For production/global install, apply the WasmPlugin manifest under `deploy/`:
+
 ```bash
-./deploy.sh full
+kubectl apply -f deploy/sp-istio-agent.yaml
 ```
 
-This will:
-- Update configuration files with the latest SHA256 hash
-- Deploy WasmPlugin and EnvoyFilter to the cluster
-- Restart affected pods
-- Check deployment status
+To test safely with the Istio Bookinfo demo, use the scoped test manifest which targets only `productpage` and includes a `ServiceEntry` for `o.softprobe.ai`:
+
+```bash
+kubectl label namespace default istio-injection=enabled --overwrite
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/bookinfo/networking/bookinfo-gateway.yaml
+kubectl apply -f deploy/test-bookinfo.yaml
+```
+
+Then generate traffic and verify:
+
+```bash
+export GATEWAY_URL=$(kubectl -n istio-system get svc istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+curl -sf "http://${GATEWAY_URL}/productpage" >/dev/null
+kubectl get wasmplugin -A
+```
 
 ## Manual Operations
 
@@ -75,8 +96,8 @@ cargo build --target wasm32-unknown-unknown --release
 
 ### Configuration
 
-- **istio-configs/wasmplugin.yaml**: WasmPlugin resource for Istio
-- **istio-configs/envoyfilter.yaml**: EnvoyFilter for advanced configuration
+- **deploy/sp-istio-agent.yaml**: Global WasmPlugin manifest
+- **deploy/test-bookinfo.yaml**: Scoped test manifest for Bookinfo
 - **test/envoy.yaml**: Local Envoy configuration for testing
 
 ## Development
@@ -100,12 +121,12 @@ sp-istio/
 ├── src/
 │   ├── lib.rs           # Main WASM extension
 │   ├── otel.rs          # OpenTelemetry integration
-├── istio-configs/       # Istio resource configurations
+├── deploy/             # Istio WasmPlugin manifests
 ├── test/               # Local testing configurations
 ├── opentelemetry/      # OpenTelemetry proto files
-├── build.sh           # Build script
-├── test.sh           # Test script
-└── deploy.sh         # Deployment script
+├── build.sh            # Build script
+├── test.sh             # Test script
+└── build-and-push.sh   # Image build/publish script
 ```
 
 ## Troubleshooting

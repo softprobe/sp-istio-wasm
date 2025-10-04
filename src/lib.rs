@@ -45,7 +45,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            sp_backend_url: "http://o.softprobe.ai".to_string(),
+            sp_backend_url: "https://o.softprobe.ai".to_string(),
             enable_inject: false,
             traffic_direction: "outbound".to_string(),
             service_name: "default-service".to_string(), // 默认服务名
@@ -275,6 +275,7 @@ impl SpHttpContext {
             log::info!("SP: No collection rules configured, collecting all requests");
             return true;
         }
+        log::info!("SP: Checking collection rules, total rules: {}", self.config.collection_rules.len());
         // 根据流量方向应用不同规则
         match self.config.traffic_direction.as_str() {
             "inbound" => {
@@ -461,16 +462,22 @@ impl SpHttpContext {
         match Url::parse(&self.config.sp_backend_url) {
             Ok(url) => {
                 if let Some(host) = url.host_str() {
+                    // For HTTPS, don't include the default port 443
+                    // For HTTP, don't include the default port 80
                     match url.port() {
-                        Some(port) => format!("{}:{}", host, port),
-                        None => {
+                        Some(port) => {
                             let default_port = match url.scheme() {
                                 "https" => 443,
                                 "http" => 80,
                                 _ => 80,
                             };
-                            format!("{}:{}", host, default_port)
+                            if port == default_port {
+                                host.to_string()
+                            } else {
+                                format!("{}:{}", host, port)
+                            }
                         }
+                        None => host.to_string(),
                     }
                 } else {
                     "o.softprobe.ai".to_string()
@@ -514,10 +521,12 @@ impl SpHttpContext {
         ];
 
         log::info!("SP Injection: Dispatching injection lookup call, body size: {}", otel_data.len());
+        log::info!("SP Injection: Authority: {}, Headers: {:?}", authority, http_headers);
 
         // Use the context's dispatch_http_call method to maintain context
+        // Using Envoy cluster name for HTTPS (configured via ServiceEntry)
         match self.dispatch_http_call(
-            "sp_backend",
+            "outbound|443||o.softprobe.ai",
             http_headers,
             Some(&otel_data),
             vec![],
@@ -571,10 +580,12 @@ impl SpHttpContext {
         ];
 
         log::info!("SP Extraction: Dispatching async save call, body size: {}", otel_data.len());
+        log::info!("SP Extraction: Authority: {}, Headers: {:?}", authority, http_headers);
 
         // Fire and forget async call to /v1/traces endpoint for storage
+        // Using Envoy cluster name for HTTPS (configured via ServiceEntry)
         match self.dispatch_http_call(
-            "sp_backend",
+            "outbound|443||o.softprobe.ai",
             http_headers,
             Some(&otel_data),
             vec![],
@@ -746,10 +757,11 @@ impl Context for SpHttpContext {
 
 impl HttpContext for SpHttpContext {
     fn on_http_request_headers(&mut self, _num_headers: usize, end_of_stream: bool) -> Action {
-        log::debug!("SP: Processing request headers");
+        log::info!("SP: *** REQUEST HEADERS CALLBACK INVOKED ***");
 
         // Capture request headers
         for (key, value) in self.get_http_request_headers() {
+            log::debug!("SP: Request header: {}: {}", key, value);
             self.request_headers.insert(key, value);
         }
 
@@ -795,7 +807,7 @@ impl HttpContext for SpHttpContext {
     }
 
     fn on_http_request_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
-        log::debug!("SP: Processing request body, size: {}", body_size);
+        log::info!("SP: Processing request body, size: {}, end_of_stream: {}", body_size, end_of_stream);
 
         // Buffer request body
         if let Some(body) = self.get_http_request_body(0, body_size) {
@@ -819,8 +831,8 @@ impl HttpContext for SpHttpContext {
         Action::Continue
     }
 
-    fn on_http_response_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
-        log::debug!("SP: Processing response headers");
+    fn on_http_response_headers(&mut self, num_headers: usize, end_of_stream: bool) -> Action {
+        log::info!("SP: *** RESPONSE HEADERS CALLBACK INVOKED *** num_headers: {}, end_of_stream: {}", num_headers, end_of_stream);
 
         // Don't extract injected data
         if self.injected {
@@ -839,10 +851,11 @@ impl HttpContext for SpHttpContext {
     }
 
     fn on_http_response_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
-        log::debug!("SP: Processing response body, size: {}", body_size);
+        log::info!("SP: *** RESPONSE BODY CALLBACK INVOKED *** size: {}, end_of_stream: {}", body_size, end_of_stream);
 
         // Don't extract injected data
         if self.injected {
+            log::info!("SP: Skipping extraction because response was injected");
             return Action::Continue
         }
 
@@ -852,16 +865,18 @@ impl HttpContext for SpHttpContext {
         }
 
         if end_of_stream {
+            log::info!("SP: End of response stream reached");
             // Check if response is successful (200) using already captured headers
             if let Some(status) = self.response_headers.get(":status") {
+                log::info!("SP: Response status: {}", status);
                 if status == "200" {
-                    log::debug!("SP: Successful response, storing in agent asynchronously");
+                    log::info!("SP: Successful response, storing in agent asynchronously");
                     // Send to Softprobe asynchronously (fire and forget)
                     if let Err(e) = self.dispatch_async_extraction_save() {
                         log::error!("SP: Failed to store agent: {}", e);
                     }
                 } else {
-                    log::debug!("SP: Response status {} - not caching", status);
+                    log::info!("SP: Response status {} - skipping extraction", status);
                 }
             } else {
                 log::warn!("SP: No :status header found in response");

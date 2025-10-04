@@ -1,0 +1,97 @@
+---
+# Softprobe Istio Agent - One-Click Deployment
+# This configuration enables transparent HTTP traffic recording for all services in the cluster
+# Usage: kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio/main/deploy/sp-istio-agent.yaml
+
+apiVersion: extensions.istio.io/v1alpha1
+kind: WasmPlugin
+metadata:
+  name: sp-istio-agent
+  namespace: istio-system  # Apply globally across all namespaces
+spec:
+  # Apply to all workloads in the mesh (no selector = global)
+  url: oci://docker.io/softprobe/sp-istio-wasm:v1.0.0-test
+  sha256: "308263150da055abf3141a2f287ddfbb5cfb8ebe3da35a3dc2fa26456de1a48a"  # Will be updated automatically during build/release process
+  phase: AUTHN  # Insert early in the filter chain
+  
+  # Configuration for the WASM extension
+  pluginConfig:
+    # Backend Configuration
+    sp_backend_url: "https://o.softprobe.ai"
+    enable_inject: false  # Disable injection by default for safety
+    traffic_direction: "outbound"  # Capture outbound HTTP calls by default
+    
+    # Collection Rules (empty = collect all traffic)
+    collectionRules:
+      http:
+        server: []  # No server-side filtering
+        client: []  # No client-side filtering (collect all outbound traffic)
+
+---
+# ServiceEntry to register Softprobe backend over HTTPS (443)
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: softprobe-backend
+  namespace: istio-system
+spec:
+  hosts:
+  - o.softprobe.ai
+  ports:
+  - number: 443
+    name: https
+    protocol: HTTPS
+  location: MESH_EXTERNAL
+  resolution: DNS
+---
+# Alternative: Namespace-specific deployment
+# Uncomment and customize this section if you want to apply only to specific namespaces
+# 
+# apiVersion: extensions.istio.io/v1alpha1
+# kind: WasmPlugin
+# metadata:
+#   name: sp-istio-agent
+#   namespace: production  # Replace with your target namespace
+# spec:
+#   # Optional: Apply only to specific workloads
+#   # selector:
+#   #   matchLabels:
+#   #     app: my-service
+#   url: oci://gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/sp-istio-wasm:latest
+#   sha256: ""
+#   phase: AUTHN
+#   pluginConfig:
+#     sp_backend_url: "https://o.softprobe.ai"
+#     enable_inject: false
+#     traffic_direction: "outbound"
+#     collectionRules:
+#       http:
+#         server: []
+#         client: []
+
+---
+# Optional: Enable injection for specific services
+# This example shows how to enable cache injection for a specific service
+#
+# apiVersion: extensions.istio.io/v1alpha1
+# kind: WasmPlugin
+# metadata:
+#   name: sp-istio-agent-with-injection
+#   namespace: production
+# spec:
+#   selector:
+#     matchLabels:
+#       app: api-service  # Replace with your service label
+#   url: oci://gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/sp-istio-wasm:latest
+#   sha256: ""
+#   phase: AUTHN
+#   pluginConfig:
+#     sp_backend_url: "https://o.softprobe.ai"
+#     enable_inject: true  # Enable cache injection
+#     traffic_direction: "outbound"
+#     collectionRules:
+#       http:
+#         server: []
+#         client:
+#           - host: "api\\.example\\.com"  # Regex pattern for external API
+#             paths: ["/v1/.*"]  # Only inject for API v1 calls

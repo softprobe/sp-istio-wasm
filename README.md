@@ -4,7 +4,7 @@ A transparent agent extension for Istio using WebAssembly (WASM) written in Rust
 
 ## Overview
 
-This project extends Istio's capabilities by implementing a custom WASM extension that intercepts outgoing HTTP requests, integrates with Softprobe for caching decisions, and manages agent storage asynchronously.
+This project extends Istio's capabilities by implementing a custom WASM extension that intercepts outgoing HTTP requests, integrates with Softprobe for caching decisions, and manages agent storage asynchronously. It also includes OpenTelemetry integration for distributed tracing.
 
 ## Quick Start
 
@@ -15,6 +15,30 @@ kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio/main/deplo
 ```
 
 This installs the global WasmPlugin and the HTTPS ServiceEntry in one step.
+
+### Local Development Environment
+
+For a complete local development setup with Istio, Bookinfo demo, and OpenTelemetry tracing:
+
+```bash
+cd deploy/dev
+./cluster-setup.sh
+./deploy-apps.sh
+./install-wasm.sh
+./start-port-forward.sh
+```
+
+This will set up:
+- Kind Kubernetes cluster
+- Istio service mesh with automatic sidecar injection
+- Jaeger distributed tracing (Docker)
+- OpenTelemetry Operator with automatic instrumentation
+- Bookinfo demo application
+- SP Istio Agent WASM plugin
+
+Access the applications:
+- Bookinfo: http://localhost:8080/productpage
+- Jaeger UI: http://localhost:16686
 
 ### 1. Build the WASM Extension
 
@@ -121,7 +145,17 @@ sp-istio/
 ├── src/
 │   ├── lib.rs           # Main WASM extension
 │   ├── otel.rs          # OpenTelemetry integration
-├── deploy/             # Istio WasmPlugin manifests
+├── deploy/
+│   ├── dev/             # Local development environment
+│   │   ├── cluster-setup.sh      # Setup Kind cluster, Istio, Jaeger, OpenTelemetry
+│   │   ├── deploy-apps.sh        # Deploy Bookinfo application
+│   │   ├── install-wasm.sh       # Install SP Istio Agent WASM plugin
+│   │   ├── start-port-forward.sh # Start port forwarding
+│   │   ├── cleanup.sh            # Clean up all resources
+│   │   ├── instrumentation.yaml  # OpenTelemetry auto-instrumentation config
+│   │   └── readme.md             # Local development guide
+│   ├── sp-istio-agent.yaml       # Global WasmPlugin manifest
+│   └── test-bookinfo.yaml        # Scoped test manifest for Bookinfo
 ├── test/               # Local testing configurations
 ├── opentelemetry/      # OpenTelemetry proto files
 ├── build.sh            # Build script

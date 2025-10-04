@@ -9,7 +9,7 @@ spec:
   sha256: "a91df8cc651e7557bd146cdf83fffef1e4fe4a37165adcc3da47fd31ecfa91a3"  # optional, recommended for production pinning
   phase: AUTHN
   pluginConfig:
-    sp_backend_url: "http://host.docker.internal:4318"
+    sp_backend_url: "https://jaeger.softprobe.ai/"
     traffic_direction: "outbound"
     enable_inject: false
     api_key: ""  # API密钥，将在安装时设置

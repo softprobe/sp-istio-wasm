@@ -19,9 +19,9 @@ if ! kubectl get namespace istio-system &> /dev/null; then
     exit 1
 fi
 
-# 检查 Bookinfo 应用是否已部署
-if ! kubectl get deployment productpage-v1 &> /dev/null; then
-    echo "❌ Bookinfo 应用未部署，请先运行 ./deploy-apps.sh"
+# 检查演示应用是否已部署
+if ! kubectl get deployment demo-ota &> /dev/null; then
+    echo "❌ 演示应用未部署，请先运行 ./deploy-apps.sh"
     exit 1
 fi
 
@@ -62,31 +62,24 @@ rm -f "$temp_config" "$temp_config.bak"
 echo "⏳ 等待 WASM 插件生效..."
 sleep 10
 
-# 重启 Bookinfo 应用以应用 WASM 插件
-echo "🔄 重启 Bookinfo 应用以应用 WASM 插件..."
-kubectl rollout restart deployment/productpage-v1
-kubectl rollout restart deployment/details-v1
-kubectl rollout restart deployment/ratings-v1
-kubectl rollout restart deployment/reviews-v1
-kubectl rollout restart deployment/reviews-v2
-kubectl rollout restart deployment/reviews-v3
+# 重启演示应用以应用 WASM 插件
+echo "🔄 重启演示应用以应用 WASM 插件..."
+kubectl rollout restart deployment/demo-ota
+kubectl rollout restart deployment/demo-airline
 
 # 等待重启完成
 echo "⏳ 等待应用重启完成..."
-kubectl rollout status deployment/productpage-v1
-kubectl rollout status deployment/details-v1
-kubectl rollout status deployment/ratings-v1
-kubectl rollout status deployment/reviews-v1
-kubectl rollout status deployment/reviews-v2
-kubectl rollout status deployment/reviews-v3
+kubectl rollout status deployment/demo-ota
+kubectl rollout status deployment/demo-airline
 
 echo ""
 echo "🎉 WASM 插件安装完成！"
 echo ""
 echo "📋 下一步操作："
 echo "1. 运行 ./start-port-forward.sh 启动端口转发"
-echo "2. 访问 http://localhost:8080/productpage 测试应用"
-echo "3. 访问 http://localhost:16686 查看 Jaeger 追踪"
+echo "2. 访问 http://localhost:8080/ 测试 demo-ota 应用"
+echo "3. 访问 http://localhost:8081/ 测试 demo-airline 应用"
+echo "4. 访问 http://localhost:16686 查看 Jaeger 追踪"
 echo ""
 echo "💡 提示："
 echo "- WASM 插件会拦截所有 HTTP 请求并发送追踪数据到 Jaeger"

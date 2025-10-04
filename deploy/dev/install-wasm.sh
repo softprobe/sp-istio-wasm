@@ -25,10 +25,38 @@ if ! kubectl get deployment productpage-v1 &> /dev/null; then
     exit 1
 fi
 
+# 获取用户输入的 API Key
+echo ""
+echo "🔑 配置 API Key"
+echo "请输入您的 SoftProbe API Key（如果没有可以留空）："
+read -p "API Key: " api_key
+
+# 创建临时配置文件
+temp_config=$(mktemp)
+cp sp-istio-agent-minimal.yaml "$temp_config"
+
+# 如果用户输入了 API Key，则更新配置文件
+if [ -n "$api_key" ]; then
+    echo "🔧 设置 API Key..."
+    # 使用 sed 替换 api_key 的值
+    sed -i.bak "s/api_key: \"\"/api_key: \"$api_key\"/" "$temp_config"
+    echo "✅ API Key 已设置"
+else
+    echo "⚠️  未设置 API Key，将使用默认空值"
+    echo ""
+    echo "💡 如需获取 API Key，请访问："
+    echo "   🌐 https://softprobe.ai/"
+    echo "   注册账号后即可获得您的专属 API Key"
+    echo ""
+fi
+
 # 安装 SP Istio Agent WASM 插件
 echo "📦 安装 WASM 插件配置..."
-kubectl apply -f sp-istio-agent-minimal.yaml
+kubectl apply -f "$temp_config"
 echo "✅ SP Istio Agent WASM 插件已安装"
+
+# 清理临时文件
+rm -f "$temp_config" "$temp_config.bak"
 
 # 等待插件生效
 echo "⏳ 等待 WASM 插件生效..."

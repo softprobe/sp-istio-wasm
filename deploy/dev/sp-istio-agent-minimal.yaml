@@ -12,6 +12,7 @@ spec:
     sp_backend_url: "http://host.docker.internal:4318"
     traffic_direction: "outbound"
     enable_inject: false
+    api_key: ""  # API密钥，将在安装时设置
 
 ---
 apiVersion: networking.istio.io/v1beta1

@@ -606,6 +606,30 @@ impl SpHttpContext {
 
         log::info!("SP Extraction: Dispatching async save call, body size: {}", otel_data.len());
         log::info!("SP Extraction: Authority: {}, Headers: {:?}", authority, http_headers);
+        
+        // 打印请求体信息（protobuf格式）
+        let body_preview = if otel_data.len() > 50 {
+            let hex_preview: String = otel_data[..50].iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!("{} ... (truncated, total {} bytes)", hex_preview, otel_data.len())
+        } else {
+            otel_data.iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        log::info!("SP Extraction: Request body (protobuf hex): {}", body_preview);
+        
+        // 打印protobuf的基本信息
+        log::info!("SP Extraction: Protobuf size: {} bytes, first 4 bytes: {:02x?}", 
+                  otel_data.len(), 
+                  if otel_data.len() >= 4 { &otel_data[..4] } else { &otel_data });
+        
+        // 打印完整的目标地址信息
+        log::info!("SP Extraction: Target URL: https://{}/v1/traces", authority);
+        log::info!("SP Extraction: Backend URL from config: {}", self.config.sp_backend_url);
 
         // Fire and forget async call to /v1/traces endpoint for storage
         // Using dynamically built Envoy cluster name based on backend URL

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 // Note: SystemTime is not available in WASM runtime, will use proxy-wasm host functions
 use prost::Message;
+use serde::{Serialize, Deserialize};
 use proxy_wasm;
 // use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -454,6 +455,163 @@ impl SpanBuilder {
 
     }
 
+// 简化的JSON结构用于序列化
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonTracesData {
+    pub resource_spans: Vec<JsonResourceSpans>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonResourceSpans {
+    pub resource: JsonResource,
+    pub scope_spans: Vec<JsonScopeSpans>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonResource {
+    pub attributes: Vec<JsonKeyValue>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonScopeSpans {
+    pub spans: Vec<JsonSpan>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonSpan {
+    pub trace_id: String,
+    pub span_id: String,
+    pub parent_span_id: Option<String>,
+    pub name: String,
+    pub kind: i32,
+    pub start_time_unix_nano: u64,
+    pub end_time_unix_nano: u64,
+    pub attributes: Vec<JsonKeyValue>,
+    pub status: JsonStatus,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonKeyValue {
+    pub key: String,
+    pub value: JsonAnyValue,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonAnyValue {
+    pub string_value: Option<String>,
+    pub int_value: Option<i64>,
+    pub double_value: Option<f64>,
+    pub bool_value: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonStatus {
+    pub code: i32,
+    pub message: String,
+}
+
+// 转换函数：从protobuf转换为JSON结构
+fn convert_traces_data_to_json(traces_data: &TracesData) -> JsonTracesData {
+    JsonTracesData {
+        resource_spans: traces_data.resource_spans.iter().map(|rs| {
+            JsonResourceSpans {
+                resource: JsonResource {
+                    attributes: rs.resource.as_ref().map_or(Vec::new(), |r| {
+                        r.attributes.iter().map(|attr| {
+                            JsonKeyValue {
+                                key: attr.key.clone(),
+                                value: convert_any_value(&attr.value),
+                            }
+                        }).collect()
+                    }),
+                },
+                scope_spans: rs.scope_spans.iter().map(|ss| {
+                    JsonScopeSpans {
+                        spans: ss.spans.iter().map(|span| {
+                            JsonSpan {
+                                trace_id: hex_encode(&span.trace_id),
+                                span_id: hex_encode(&span.span_id),
+                                parent_span_id: if span.parent_span_id.is_empty() {
+                                    None
+                                } else {
+                                    Some(hex_encode(&span.parent_span_id))
+                                },
+                                name: span.name.clone(),
+                                kind: span.kind,
+                                start_time_unix_nano: span.start_time_unix_nano,
+                                end_time_unix_nano: span.end_time_unix_nano,
+                                attributes: span.attributes.iter().map(|attr| {
+                                    JsonKeyValue {
+                                        key: attr.key.clone(),
+                                        value: convert_any_value(&attr.value),
+                                    }
+                                }).collect(),
+                                status: JsonStatus {
+                                    code: span.status.as_ref().map_or(0, |s| s.code),
+                                    message: span.status.as_ref().map_or(String::new(), |s| s.message.clone()),
+                                },
+                            }
+                        }).collect(),
+                    }
+                }).collect(),
+            }
+        }).collect(),
+    }
+}
+
+fn convert_any_value(value: &Option<AnyValue>) -> JsonAnyValue {
+    match value {
+        Some(av) => {
+            match &av.value {
+                Some(any_value::Value::StringValue(s)) => JsonAnyValue {
+                    string_value: Some(s.clone()),
+                    int_value: None,
+                    double_value: None,
+                    bool_value: None,
+                },
+                Some(any_value::Value::IntValue(i)) => JsonAnyValue {
+                    string_value: None,
+                    int_value: Some(*i),
+                    double_value: None,
+                    bool_value: None,
+                },
+                Some(any_value::Value::DoubleValue(d)) => JsonAnyValue {
+                    string_value: None,
+                    int_value: None,
+                    double_value: Some(*d),
+                    bool_value: None,
+                },
+                Some(any_value::Value::BoolValue(b)) => JsonAnyValue {
+                    string_value: None,
+                    int_value: None,
+                    double_value: None,
+                    bool_value: Some(*b),
+                },
+                _ => JsonAnyValue {
+                    string_value: None,
+                    int_value: None,
+                    double_value: None,
+                    bool_value: None,
+                },
+            }
+        }
+        None => JsonAnyValue {
+            string_value: None,
+            int_value: None,
+            double_value: None,
+            bool_value: None,
+        },
+    }
+}
+
+// 添加JSON序列化函数
+pub fn serialize_traces_data_json(traces_data: &TracesData) -> Result<Vec<u8>, serde_json::Error> {
+    let json_data = convert_traces_data_to_json(traces_data);
+    let json_string = serde_json::to_string(&json_data)?;
+    Ok(json_string.into_bytes())
+}
+
+// 保留原有的protobuf序列化函数
 pub fn serialize_traces_data(traces_data: &TracesData) -> Result<Vec<u8>, prost::EncodeError> {
     let mut buf = Vec::new();
     traces_data.encode(&mut buf)?;

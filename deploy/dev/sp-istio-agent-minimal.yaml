@@ -9,15 +9,15 @@ spec:
     matchLabels:
       app: demo-ota
   url: http://host.docker.internal:8000/sp_istio_agent.wasm
-  sha256: 48a0943e73d55010470a1e40ddf92265fb40e61baccb062235ab2127f03b3517
+  sha256: 37557e6c6ce66459d22df6e41efbeb4adf81a7d8554284a2f7fefc965d252b77
   phase: AUTHN
   match:
     - mode: SERVER
     - mode: CLIENT
   pluginConfig:
-    service_name: "demo-ota-1"
-    api_key: "demo-ota-01"
-    sp_backend_url: "https://jaeger.softprobe.ai/"
+    service_name: "demo-ota-11111"
+    api_key: "demo-ota-0111"
+    sp_backend_url: "https://o.softprobe.ai"
     enable_inject: false
     collectionRules:
       http:
@@ -45,9 +45,6 @@ spec:
   - number: 443
     name: https
     protocol: HTTPS
-  - number: 14268
-    name: jaeger-collector
-    protocol: HTTP
   location: MESH_EXTERNAL
   resolution: DNS
 

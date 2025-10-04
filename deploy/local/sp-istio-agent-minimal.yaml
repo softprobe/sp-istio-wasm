@@ -6,7 +6,7 @@ metadata:
   namespace: istio-system
 spec:
   url: http://host.docker.internal:8000/sp_istio_agent.wasm
-  # sha256: "<digest>"  # optional, recommended for production pinning
+  sha256: "a91df8cc651e7557bd146cdf83fffef1e4fe4a37165adcc3da47fd31ecfa91a3"  # optional, recommended for production pinning
   phase: AUTHN
   pluginConfig:
     sp_backend_url: "http://host.docker.internal:4318"

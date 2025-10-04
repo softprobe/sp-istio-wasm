@@ -5,7 +5,7 @@ metadata:
   name: sp-istio-agent
   namespace: istio-system
 spec:
-  url: oci://docker.io/softprobe/sp-istio-wasm:v1.0.13-https
+  url: http://host.docker.internal:8000/sp_istio_agent.wasm
   # sha256: "<digest>"  # optional, recommended for production pinning
   phase: AUTHN
   pluginConfig:

@@ -526,7 +526,7 @@ impl SpHttpContext {
         // Use the context's dispatch_http_call method to maintain context
         // Using Envoy cluster name for HTTPS (configured via ServiceEntry)
         match self.dispatch_http_call(
-            "outbound|443||o.softprobe.ai",
+            "outbound|4318||host.docker.internal",
             http_headers,
             Some(&otel_data),
             vec![],
@@ -585,7 +585,7 @@ impl SpHttpContext {
         // Fire and forget async call to /v1/traces endpoint for storage
         // Using Envoy cluster name for HTTPS (configured via ServiceEntry)
         match self.dispatch_http_call(
-            "outbound|443||o.softprobe.ai",
+            "outbound|4318||host.docker.internal",
             http_headers,
             Some(&otel_data),
             vec![],

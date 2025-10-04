@@ -1,0 +1,63 @@
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: demo-gateway
+  namespace: default
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: demo-travel-vs
+  namespace: default
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - demo-gateway
+  http:
+  - match:
+    - headers:
+        host:
+          exact: ota.local
+    route:
+    - destination:
+        host: demo-ota
+        port:
+          number: 8080
+  - match:
+    - headers:
+        host:
+          exact: airline.local
+    route:
+    - destination:
+        host: demo-airline
+        port:
+          number: 8081
+  - match:
+    - uri:
+        prefix: "/airline"
+    rewrite:
+      uri: "/"
+    route:
+    - destination:
+        host: demo-airline
+        port:
+          number: 8081
+  - match:
+    - uri:
+        prefix: "/"
+    route:
+    - destination:
+        host: demo-ota
+        port:
+          number: 8080

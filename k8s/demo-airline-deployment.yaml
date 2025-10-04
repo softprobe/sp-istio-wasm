@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-airline
+  namespace: default
+  labels:
+    app: demo-airline
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-airline
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: demo-airline
+        version: v1
+        service: demo-airline
+      annotations:
+        sidecar.istio.io/inject: "true"
+    spec:
+      serviceAccountName: default
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+      containers:
+        - name: demo-airline
+          image: gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/demo-airline:v0.0.3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: SERVER_PORT
+              value: "8081"
+          resources:
+            requests:
+              memory: "400Mi"
+              cpu: 100m
+            limits:
+              memory: "800Mi"
+              cpu: 200m
+          ports:
+            - containerPort: 8081
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-airline
+  namespace: default
+  labels:
+    app: demo-airline
+    service: demo-airline
+spec:
+  selector:
+    app: demo-airline
+  ports:
+    - protocol: TCP
+      port: 8081
+      targetPort: 8081
+      name: http
+  type: ClusterIP

@@ -46,5 +46,17 @@ spec:
     protocol: HTTP
   location: MESH_EXTERNAL
   resolution: DNS
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: softprobe-backend-tls
+  namespace: istio-system
+spec:
+  host: jaeger.softprobe.ai
+  trafficPolicy:
+    tls:
+      mode: SIMPLE
+      sni: jaeger.softprobe.ai
 
 

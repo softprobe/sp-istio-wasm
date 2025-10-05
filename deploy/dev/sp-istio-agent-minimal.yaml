@@ -1,21 +1,60 @@
+# SERVER模式 - 部署在demo-airline上收集入站流量
 ---
 apiVersion: extensions.istio.io/v1alpha1
 kind: WasmPlugin
 metadata:
-  name: sp-istio-agent
+  name: sp-istio-agent-server
   namespace: istio-system
 spec:
-  url: http://host.docker.internal:8000/sp_istio_agent.wasm
-  sha256: f4bd2956f876bbd12560fb9f1a009a5eb8bf4b261f4d7d0a7772bfdd43914a10
+  selector:
+    matchLabels:
+      app: demo-airline
+  url: http://host.docker.internal:8000/target/wasm32-unknown-unknown/release/sp_istio_agent.wasm
+  sha256: b8969ea29596886d4dc255b7aaf53c083b0a0044f3ccc5e10ee607b8916242dd
   phase: AUTHN
   match:
     - mode: SERVER
+  pluginConfig:
+    service_name: "demo-airline"
+    api_key: "demo-airline-01"
+    sp_backend_url: "https://jaeger.softprobe.ai"
+    enable_inject: false
+    traffic_direction: "server"
+    collectionRules:
+      http:
+        server:
+          - path: ".*"
+        client:
+          - host: ".*"
+            paths: [".*"]
+  vmConfig:
+    env:
+      - name: ENVOY_LOG_LEVEL
+        value: "debug"
+      - name: WASM_LOG_LEVEL
+        value: "debug"
+---
+# CLIENT模式 - 部署在demo-ota上收集出站流量
+apiVersion: extensions.istio.io/v1alpha1
+kind: WasmPlugin
+metadata:
+  name: sp-istio-agent-client
+  namespace: istio-system
+spec:
+  selector:
+    matchLabels:
+      app: demo-ota
+  url: http://host.docker.internal:8000/target/wasm32-unknown-unknown/release/sp_istio_agent.wasm
+  sha256: b8969ea29596886d4dc255b7aaf53c083b0a0044f3ccc5e10ee607b8916242dd
+  phase: AUTHN
+  match:
     - mode: CLIENT
   pluginConfig:
-    service_name: "demo-ota-111111"
+    service_name: "demo-ota"
     api_key: "demo-ota-01"
     sp_backend_url: "https://jaeger.softprobe.ai"
     enable_inject: false
+    traffic_direction: "client"
     collectionRules:
       http:
         server:

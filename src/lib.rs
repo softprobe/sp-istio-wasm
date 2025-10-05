@@ -955,14 +955,22 @@ impl SpHttpContext {
         // 同时检查实际HTTP headers中的 tracestate
         let actual_headers = self.get_http_request_headers();
         let mut found_actual_tracestate = false;
+        let mut found_actual_traceparent = false;
         for (key, value) in &actual_headers {
             if key.to_lowercase() == "tracestate" {
                 log::error!("SP: Current tracestate in ACTUAL HTTP HEADERS before modification: {}", value);
                 found_actual_tracestate = true;
             }
+            if key.to_lowercase() == "traceparent" {
+                log::error!("SP: Current traceparent in ACTUAL HTTP HEADERS before modification: {}", value);
+                found_actual_traceparent = true;
+            }
         }
         if !found_actual_tracestate {
             log::error!("SP: No existing tracestate found in ACTUAL HTTP HEADERS");
+        }
+        if !found_actual_traceparent {
+            log::error!("SP: No existing traceparent found in ACTUAL HTTP HEADERS");
         }
 
         // 使用 span_builder 中已生成的 current_span_id，确保一致性
@@ -1030,6 +1038,14 @@ impl SpHttpContext {
         log::error!("SP: *** BEFORE add_http_request_header *** NEW VERSION");
         self.add_http_request_header("tracestate", &new_tracestate);
         log::error!("SP: Successfully added tracestate header - NEW VERSION");
+
+        // 如果没有 traceparent 头部，也添加标准的 traceparent
+        if !found_actual_traceparent {
+            log::error!("SP: Adding missing traceparent header: {}", traceparent_value);
+            self.add_http_request_header("traceparent", &traceparent_value);
+            // 同时更新本地缓存
+            self.request_headers.insert("traceparent".to_string(), traceparent_value);
+        }
 
         // 同时更新本地缓存的 request_headers
         self.request_headers.insert("tracestate".to_string(), new_tracestate.clone());
@@ -1411,9 +1427,6 @@ impl HttpContext for SpHttpContext {
     fn on_http_request_headers(&mut self, _num_headers: usize, end_of_stream: bool) -> Action {
         let traffic_direction = self.detect_traffic_direction();
         log::error!("SP: *** {} REQUEST HEADERS CALLBACK INVOKED ***", traffic_direction);
-        for (key, value) in self.get_http_request_headers() {
-            log::error!("SP: Request header before: {}: {}", key, value);
-        }
         // 首先获取初始的请求头用于 span builder 更新
         let mut initial_headers = HashMap::new();
         for (key, value) in self.get_http_request_headers() {

@@ -8,6 +8,7 @@ spec:
     - tracecontext
     - baggage
     - b3
+    - tracestate
   sampler:
     type: parentbased_traceidratio
     argument: "1"

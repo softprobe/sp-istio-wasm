@@ -92,6 +92,8 @@ impl SpanBuilder {
     }
 
     pub fn with_context(mut self, headers: &HashMap<String, String>) -> Self {
+        let mut trace_context_found = false;
+        
         // Extract trace context from tracestate x-sp-traceparent if present
         if let Some(tracestate) = headers.get("tracestate") {
             log::error!("DEBUG: Found tracestate in headers: {}", tracestate);
@@ -106,8 +108,23 @@ impl SpanBuilder {
                         self.trace_id = trace_id;
                         self.parent_span_id = Some(span_id);
                         log::error!("DEBUG: Successfully parsed trace context from x-sp-traceparent");
+                        trace_context_found = true;
                         break;
                     }
+                }
+            }
+        }
+
+        // 如果没有从 tracestate 中解析到 trace context，尝试从标准的 traceparent 头部解析
+        if !trace_context_found {
+            if let Some(traceparent) = headers.get("traceparent") {
+                log::error!("DEBUG: Found traceparent in headers: {}", traceparent);
+                // 解析标准的 traceparent 格式: 00-trace_id-span_id-01
+                if let Some((trace_id, span_id)) = parse_traceparent(traceparent) {
+                    self.trace_id = trace_id;
+                    self.parent_span_id = Some(span_id);
+                    log::error!("DEBUG: Successfully parsed trace context from traceparent");
+                    trace_context_found = true;
                 }
             }
         }

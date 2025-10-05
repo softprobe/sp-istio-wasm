@@ -6,11 +6,8 @@ metadata:
   name: sp-istio-agent-server
   namespace: istio-system
 spec:
-  selector:
-    matchLabels:
-      app: demo-airline
   url: http://host.docker.internal:8000/target/wasm32-unknown-unknown/release/sp_istio_agent.wasm
-  sha256: b8969ea29596886d4dc255b7aaf53c083b0a0044f3ccc5e10ee607b8916242dd
+  sha256: 52c2ec7f121140c80f25d8276d20a598957c56817c3ba62a654689aa4bae51a9
   phase: AUTHN
   match:
     - mode: SERVER
@@ -41,11 +38,8 @@ metadata:
   name: sp-istio-agent-client
   namespace: istio-system
 spec:
-  selector:
-    matchLabels:
-      app: demo-ota
   url: http://host.docker.internal:8000/target/wasm32-unknown-unknown/release/sp_istio_agent.wasm
-  sha256: b8969ea29596886d4dc255b7aaf53c083b0a0044f3ccc5e10ee607b8916242dd
+  sha256: 52c2ec7f121140c80f25d8276d20a598957c56817c3ba62a654689aa4bae51a9
   phase: AUTHN
   match:
     - mode: CLIENT

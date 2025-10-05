@@ -69,6 +69,21 @@ impl SpanBuilder {
         self.api_key = api_key;
         self
     }
+    
+    /// Check if session_id is present and not empty
+    pub fn has_session_id(&self) -> bool {
+        !self.session_id.is_empty()
+    }
+    
+    /// Get session_id value for logging purposes
+    pub fn get_session_id(&self) -> &str {
+        &self.session_id
+    }
+    
+    /// Get trace_id as hex string
+    pub fn get_trace_id_hex(&self) -> String {
+        self.trace_id.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+    }
 
     pub fn with_context(mut self, headers: &HashMap<String, String>) -> Self {
         // Extract trace context from headers if present

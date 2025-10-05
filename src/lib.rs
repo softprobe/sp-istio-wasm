@@ -745,11 +745,21 @@ impl SpHttpContext {
     fn dispatch_async_extraction_save(&mut self) -> Result<(), String> {
         log::info!("SP: Starting async extraction save");
         
-        // 检查采集规则
-        if !self.should_collect_by_rules() {
-            log::info!("SP: Data extraction skipped based on collection rules");
-            return Err("Data collection skipped based on collection rules".to_string());
+        // 检查是否解析到 session_id
+        let has_session_id = self.span_builder.has_session_id();
+        log::info!("SP: Session ID found: {}, value: '{}'", has_session_id, self.span_builder.get_session_id());
+        
+        // 如果没有解析到 session_id，强制上传 trace
+        if !has_session_id {
+            log::info!("SP: No session ID found, forcing trace upload for isolation");
+        } else {
+            // 检查采集规则
+            if !self.should_collect_by_rules() {
+                log::info!("SP: Data extraction skipped based on collection rules");
+                return Err("Data collection skipped based on collection rules".to_string());
+            }
         }
+        
         log::info!("SP: Storing agent data asynchronously");
 
         // Create extract span using references to avoid cloning
@@ -832,45 +842,127 @@ impl SpHttpContext {
 
     /// Inject W3C Trace Context headers into the outgoing request
     fn inject_trace_context_headers(&mut self) {
-        // Only inject if traceparent header is not already present
-        if !self.request_headers.contains_key("traceparent") {
-            // Generate a new span ID for this request
-            let span_id = crate::otel::generate_span_id();
-            
-            // Generate traceparent header
-            let traceparent = self.span_builder.generate_traceparent(&span_id);
-            log::info!("SP: Injecting traceparent header: {}", traceparent);
-            
-            // Add traceparent header to the request
-            let _ = self.add_http_request_header("traceparent", &traceparent);
-        } else {
-            log::info!("SP: traceparent header already present, skipping injection");
+        // 透传所有请求header，不做任何修改
+        // 只在 tracestate 中添加 x-sp-traceparent 键
+        
+        // 生成当前 WASM 的 span ID 和使用现有的 trace ID
+        let current_span_id = crate::otel::generate_span_id();
+        let current_span_id_hex = current_span_id.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+        
+        // 获取当前的 trace ID (从 span_builder 中获取)
+        let trace_id_hex = self.span_builder.get_trace_id_hex();
+        
+        // 生成标准的 traceparent 格式: 00-trace_id-span_id-01
+        let traceparent_value = format!("00-{}-{}-01", trace_id_hex, current_span_id_hex);
+        
+        // 获取现有的 tracestate
+        let mut tracestate_entries = Vec::new();
+        
+        if let Some(existing_tracestate) = self.request_headers.get("tracestate") {
+            // 解析现有的 tracestate，保留其他条目
+            for entry in existing_tracestate.split(',') {
+                let entry = entry.trim();
+                if !entry.starts_with("x-sp-traceparent=") {
+                    tracestate_entries.push(entry.to_string());
+                }
+            }
         }
+        
+        // 添加 x-sp-traceparent 条目，使用完整的 traceparent 格式
+        tracestate_entries.insert(0, format!("x-sp-traceparent={}", traceparent_value));
+        
+        // 构建新的 tracestate
+        let new_tracestate = tracestate_entries.join(",");
+        
+        log::info!("SP: Adding x-sp-traceparent to tracestate: {}", new_tracestate);
+        
+        // 设置或更新 tracestate header
+        let _ = self.add_http_request_header("tracestate", &new_tracestate);
     }
 
     /// Extract and propagate W3C Trace Context from response headers
     fn extract_and_propagate_trace_context(&mut self) {
-        // Check if response contains W3C Trace Context headers
-        if let Some(traceparent) = self.response_headers.get("traceparent") {
-            log::info!("SP: Found traceparent in response: {}", traceparent);
+        // 从请求 header 中提取 tracestate
+        let mut parent_span_id: Option<Vec<u8>> = None;
+        let mut trace_id: Option<Vec<u8>> = None;
+        
+        if let Some(tracestate) = self.request_headers.get("tracestate") {
+            log::info!("SP: Found tracestate in request: {}", tracestate);
             
-            // Update span builder with the response trace context
+            // 解析 tracestate 中的 x-sp-traceparent
+            for entry in tracestate.split(',') {
+                let entry = entry.trim();
+                if let Some(value) = entry.strip_prefix("x-sp-traceparent=") {
+                    // 解析完整的 traceparent 格式: 00-trace_id-span_id-01
+                    if let Some((parsed_trace_id, parsed_span_id)) = self.parse_traceparent_value(value) {
+                        trace_id = Some(parsed_trace_id);
+                        parent_span_id = Some(parsed_span_id);
+                        log::info!("SP: Extracted trace context from x-sp-traceparent: {}", value);
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // 如果从 tracestate 中解析到了 trace context，更新 span builder
+        if let (Some(trace_id), Some(parent_id)) = (trace_id, parent_span_id) {
             let mut updated_headers = HashMap::new();
-            updated_headers.insert("traceparent".to_string(), traceparent.clone());
             
-            if let Some(tracestate) = self.response_headers.get("tracestate") {
-                log::info!("SP: Found tracestate in response: {}", tracestate);
+            // 构造标准的 traceparent
+            let trace_id_hex = trace_id.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+            let parent_id_hex = parent_id.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+            let traceparent = format!("00-{}-{}-01", trace_id_hex, parent_id_hex);
+            
+            updated_headers.insert("traceparent".to_string(), traceparent);
+            
+            // 保留原始的 tracestate
+            if let Some(tracestate) = self.request_headers.get("tracestate") {
                 updated_headers.insert("tracestate".to_string(), tracestate.clone());
             }
             
-            // Update the span builder with the response trace context
+            // 更新 span builder
             self.span_builder = self.span_builder.clone().with_context(&updated_headers);
+        }
+        
+        // 检查响应中是否包含 W3C Trace Context headers（保持原有逻辑）
+        if let Some(traceparent) = self.response_headers.get("traceparent") {
+            log::info!("SP: Found traceparent in response: {}", traceparent);
             
-            // Propagate trace context to downstream response
+            // 传播 trace context 到下游响应
             self.propagate_trace_context_to_response();
         } else {
             log::debug!("SP: No traceparent found in response headers");
         }
+    }
+    
+    /// Helper function to decode hex string to bytes
+    fn hex_decode(&self, hex: &str) -> Option<Vec<u8>> {
+        if hex.len() % 2 != 0 {
+            return None;
+        }
+        
+        let mut bytes = Vec::new();
+        for i in (0..hex.len()).step_by(2) {
+            if let Ok(byte) = u8::from_str_radix(&hex[i..i+2], 16) {
+                bytes.push(byte);
+            } else {
+                return None;
+            }
+        }
+        Some(bytes)
+    }
+    
+    /// Parse traceparent value in format: 00-trace_id-span_id-01
+    fn parse_traceparent_value(&self, traceparent: &str) -> Option<(Vec<u8>, Vec<u8>)> {
+        let parts: Vec<&str> = traceparent.split('-').collect();
+        if parts.len() != 4 {
+            return None;
+        }
+        
+        let trace_id = self.hex_decode(parts[1])?;
+        let span_id = self.hex_decode(parts[2])?;
+        
+        Some((trace_id, span_id))
     }
 
     /// Propagate trace context to the downstream response

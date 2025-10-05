@@ -58,8 +58,9 @@ echo "📊 安装 OpenTelemetry Operator..."
 if kubectl get deployment opentelemetry-operator-controller-manager -n opentelemetry-operator-system &> /dev/null; then
     echo "⚠️  OpenTelemetry Operator 已安装，跳过安装步骤"
 else
-    kubectl apply -f https://github.com/open-telemetry/opentelemetry-operator/releases/latest/download/opentelemetry-operator.yaml
+   # kubectl apply -f https://github.com/open-telemetry/opentelemetry-operator/releases/latest/download/opentelemetry-operator.yaml
     # 等待 OpenTelemetry Operator 就绪
+    kubectl apply -f opentelemetry-operator.yaml
     echo "⏳ 等待 OpenTelemetry Operator 就绪..."
     kubectl wait --for=condition=available --timeout=300s deployment/opentelemetry-operator-controller-manager -n opentelemetry-operator-system
     

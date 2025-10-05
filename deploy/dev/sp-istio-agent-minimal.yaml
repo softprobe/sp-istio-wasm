@@ -6,7 +6,7 @@ metadata:
   namespace: istio-system
 spec:
   url: http://host.docker.internal:8000/sp_istio_agent.wasm
-  sha256: b7e3ca32d2c4cff4ace4cb1d8f7d07db7b0bc83e99fb209e952994b94697c7d3
+  sha256: c692697669ddee8393e485444492256a67f5ef48f8a89c8eedfa3ebd5f12c1c2
   phase: AUTHN
   match:
     - mode: SERVER
@@ -57,6 +57,5 @@ spec:
   trafficPolicy:
     tls:
       mode: SIMPLE
-      sni: jaeger.softprobe.ai
 
 

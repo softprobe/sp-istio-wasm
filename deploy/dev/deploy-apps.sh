@@ -48,11 +48,8 @@ echo "📥 加载 demo-airline 镜像到 Kind 集群..."
 kind load docker-image $AIRLINE_IMAGE --name sp-demo-cluster
 
 # 部署应用
-echo "📦 部署 demo-ota 应用（带 OpenTelemetry 自动注入）..."
-kubectl apply -f demo-ota-deployment.yaml
-
-echo "📦 部署 demo-airline 应用（带 OpenTelemetry 自动注入）..."
-kubectl apply -f demo-airline-deployment.yaml
+echo "📦 部署演示应用（demo-ota 和 demo-airline，带 OpenTelemetry 自动注入）..."
+kubectl apply -f demo-apps-deployment.yaml
 
 echo "🌐 部署 Istio Gateway 和 VirtualService..."
 kubectl apply -f demo-istio-gateway.yaml

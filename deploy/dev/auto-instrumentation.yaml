@@ -17,8 +17,6 @@ spec:
   java:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:latest
     env:
-      - name: OTEL_EXPORTER_OTLP_ENDPOINT
-        value: "https://jaeger.softprobe.ai"
       - name: OTEL_EXPORTER_OTLP_PROTOCOL
         value: "http/protobuf"
       - name: OTEL_JAVAAGENT_DEBUG
@@ -43,15 +41,11 @@ spec:
   python:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-python:latest
     env:
-      - name: OTEL_EXPORTER_OTLP_ENDPOINT
-        value: "https://jaeger.softprobe.ai"
       - name: OTEL_EXPORTER_OTLP_PROTOCOL
         value: "http/protobuf"
   # Node.js 自动注入配置
   nodejs:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:latest
     env:
-      - name: OTEL_EXPORTER_OTLP_ENDPOINT
-        value: "https://jaeger.softprobe.ai"
       - name: OTEL_EXPORTER_OTLP_PROTOCOL
         value: "http/protobuf"

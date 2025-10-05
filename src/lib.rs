@@ -33,12 +33,38 @@ pub struct ClientConfig {
 }
 
 #[derive(Debug, Clone)]
+pub struct ExemptionRule {
+    pub host_patterns: Vec<String>,
+    pub path_patterns: Vec<String>,
+}
+
+impl Default for ExemptionRule {
+    fn default() -> Self {
+        Self {
+            host_patterns: vec![],
+            path_patterns: vec![
+                "/v1/traces".to_string(),
+                "/api/traces".to_string(),
+                "/v1/metrics".to_string(),
+                "/api/metrics".to_string(),
+                "/v1/logs".to_string(),
+                "/api/logs".to_string(),
+                "/otlp/v1/traces".to_string(),
+                "/otlp/v1/metrics".to_string(),
+                "/otlp/v1/logs".to_string(),
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Config {
     pub sp_backend_url: String,
     pub enable_inject: bool,
     pub service_name: String,       // 添加service_name字段
     pub traffic_direction: Option<String>,  // 改为可选字段
     pub collection_rules: Vec<CollectionRule>,
+    pub exemption_rules: Vec<ExemptionRule>,  // 添加豁免规则字段
     pub api_key: String,
 }
 
@@ -50,6 +76,7 @@ impl Default for Config {
             traffic_direction: None,  // 默认为 None，表示自动检测
             service_name: "default-service".to_string(), // 默认服务名
             collection_rules: vec![],
+            exemption_rules: vec![],  // 默认空的豁免规则
             api_key: String::new(), // 默认空字符串
         }
     }
@@ -194,6 +221,55 @@ impl RootContext for SpRootContext {
                             });
                         }
                     }
+
+                    // 解析 exemptionRules
+                    if let Some(exemption_rules) = config_json.get("exemptionRules") {
+                        if let Some(exemption_array) = exemption_rules.as_array() {
+                            for exemption_entry in exemption_array {
+                                let mut host_patterns = Vec::new();
+                                let mut path_patterns = Vec::new();
+
+                                if let Some(hosts) = exemption_entry.get("hostPatterns") {
+                                    if let Some(hosts_array) = hosts.as_array() {
+                                        for host_entry in hosts_array {
+                                            if let Some(host) = host_entry.as_str() {
+                                                host_patterns.push(host.to_string());
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if let Some(paths) = exemption_entry.get("pathPatterns") {
+                                    if let Some(paths_array) = paths.as_array() {
+                                        for path_entry in paths_array {
+                                            if let Some(path) = path_entry.as_str() {
+                                                path_patterns.push(path.to_string());
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // 如果没有指定pathPatterns，使用默认值
+                                    path_patterns = ExemptionRule::default().path_patterns;
+                                }
+
+                                // 只要有path_patterns就添加规则（host_patterns可以为空）
+                                if !path_patterns.is_empty() {
+                                    log::info!("SP: Added exemption rule - hostPatterns: {:?}, pathPatterns: {:?}",
+                                              host_patterns, path_patterns);
+                                    self.config.exemption_rules.push(ExemptionRule {
+                                        host_patterns,
+                                        path_patterns,
+                                    });
+                                }
+                            }
+                        }
+                    } else {
+                        // 如果没有配置exemptionRules，添加默认的豁免规则
+                        let default_rule = ExemptionRule::default();
+                        log::info!("SP: Added default exemption rule - hostPatterns: {:?}, pathPatterns: {:?}",
+                                  default_rule.host_patterns, default_rule.path_patterns);
+                        self.config.exemption_rules.push(default_rule);
+                    }
                 }
             }
         }
@@ -270,6 +346,12 @@ impl SpHttpContext {
     }
 
     fn should_collect_by_rules(&self) -> bool {
+        // 首先检查豁免规则
+        if self.is_exempted() {
+            log::info!("SP: Request is exempted from collection");
+            return false;
+        }
+
         // 如果没有配置规则，则默认采集所有请求
         if self.config.collection_rules.is_empty() {
             log::info!("SP: No collection rules configured, collecting all requests");
@@ -440,6 +522,99 @@ impl SpHttpContext {
 
         log::info!("SP: Final client info - host: {:?}, path: {:?}", client_host, client_path);
         (client_host, client_path)
+    }
+
+    // 检查请求是否应该被豁免
+    fn is_exempted(&self) -> bool {
+        // 如果没有配置豁免规则，则不豁免任何请求
+        if self.config.exemption_rules.is_empty() {
+            return false;
+        }
+
+        // 获取请求的host和path信息
+        let request_host = self.request_headers.get("host")
+            .or_else(|| self.request_headers.get(":authority"))
+            .cloned();
+        let request_path = self.request_headers.get(":path").cloned();
+
+        // 获取客户端信息（用于outbound请求）
+        let (client_host, client_path) = self.extract_client_info();
+
+        log::debug!("SP: Checking exemption - request_host: {:?}, request_path: {:?}, client_host: {:?}, client_path: {:?}",
+                   request_host, request_path, client_host, client_path);
+
+        // 检查每个豁免规则
+        for rule in &self.config.exemption_rules {
+            let mut host_matched = false;
+            let mut path_matched = false;
+
+            // 检查host模式匹配
+            if rule.host_patterns.is_empty() {
+                host_matched = true; // 如果没有配置host模式，则认为匹配
+            } else {
+                // 检查inbound请求的host
+                if let Some(ref host) = request_host {
+                    for pattern in &rule.host_patterns {
+                        if self.match_pattern(pattern, host) {
+                            host_matched = true;
+                            log::debug!("SP: Host pattern '{}' matched request host '{}'", pattern, host);
+                            break;
+                        }
+                    }
+                }
+                
+                // 检查outbound请求的client host
+                if !host_matched {
+                    if let Some(ref host) = client_host {
+                        for pattern in &rule.host_patterns {
+                            if self.match_pattern(pattern, host) {
+                                host_matched = true;
+                                log::debug!("SP: Host pattern '{}' matched client host '{}'", pattern, host);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 检查path模式匹配
+            if rule.path_patterns.is_empty() {
+                path_matched = true; // 如果没有配置path模式，则认为匹配
+            } else {
+                // 检查inbound请求的path
+                if let Some(ref path) = request_path {
+                    for pattern in &rule.path_patterns {
+                        if self.match_pattern(pattern, path) {
+                            path_matched = true;
+                            log::debug!("SP: Path pattern '{}' matched request path '{}'", pattern, path);
+                            break;
+                        }
+                    }
+                }
+                
+                // 检查outbound请求的client path
+                if !path_matched {
+                    if let Some(ref path) = client_path {
+                        for pattern in &rule.path_patterns {
+                            if self.match_pattern(pattern, path) {
+                                path_matched = true;
+                                log::debug!("SP: Path pattern '{}' matched client path '{}'", pattern, path);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 如果host和path都匹配，则豁免该请求
+            if host_matched && path_matched {
+                log::info!("SP: Request exempted by rule - hostPatterns: {:?}, pathPatterns: {:?}",
+                          rule.host_patterns, rule.path_patterns);
+                return true;
+            }
+        }
+
+        false
     }
 
     // 使用正则表达式匹配

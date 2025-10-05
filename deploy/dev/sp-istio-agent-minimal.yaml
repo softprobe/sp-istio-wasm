@@ -6,7 +6,7 @@ metadata:
   namespace: istio-system
 spec:
   url: http://host.docker.internal:8000/sp_istio_agent.wasm
-  sha256: 7fd60ed75084f3df9b02849e50593c1320e878fe96ca33db9b1aade84ca98f80
+  sha256: f4bd2956f876bbd12560fb9f1a009a5eb8bf4b261f4d7d0a7772bfdd43914a10
   phase: AUTHN
   match:
     - mode: SERVER

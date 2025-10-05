@@ -45,9 +45,7 @@ spec:
           number: 8081
   - match:
     - uri:
-        prefix: "/airline"
-    rewrite:
-      uri: "/"
+        prefix: "/airline-api"
     route:
     - destination:
         host: demo-airline

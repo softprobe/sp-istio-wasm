@@ -272,7 +272,7 @@ impl SpanBuilder {
         url_host: Option<&str>,
         url_path: Option<&str>,
     ) -> TracesData {
-        let span_id = generate_span_id();
+        let span_id = self.current_span_id.clone();
         let mut attributes = Vec::new();
 
         log::error!("DEBUG: service_name value: '{}'", self.service_name);

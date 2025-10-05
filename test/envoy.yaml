@@ -19,6 +19,11 @@ static_resources:
                     - name: inbound
                       domains: ["*"]
                       routes:
+                        # 添加对 airline API 的路由支持
+                        - match:
+                            prefix: "/airline-api/"
+                          route:
+                            cluster: airline_cluster
                         - match:
                             prefix: "/"
                           route:

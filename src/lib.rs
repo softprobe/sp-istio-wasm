@@ -142,7 +142,7 @@ impl RootContext for SpRootContext {
                             "SP: Configured injection enabled: {}",
                             self.config.enable_inject
                         );
-                    } */ 
+                    } */
 
                     // 解析 traffic_direction
                     if let Some(direction) = config_json
@@ -944,30 +944,36 @@ impl SpHttpContext {
     /// Inject W3C Trace Context headers into the outgoing request
     fn inject_trace_context_headers(&mut self) {
         log::error!("SP: *** INJECT_TRACE_CONTEXT_HEADERS CALLED *** NEW VERSION");
-        
-        // 首先检查当前的 tracestate
-        if let Some(current_tracestate) = self.request_headers.get("tracestate") {
-            log::error!("SP: Current tracestate before modification: {}", current_tracestate);
-        } else {
-            log::error!("SP: No existing tracestate found");
-        }
-        
-        // 透传所有请求header，不做任何修改
-        // 只在 tracestate 中添加 x-sp-traceparent 键
 
-        // 生成当前 WASM 的 span ID 和使用现有的 trace ID
-        let current_span_id = crate::otel::generate_span_id();
-        let current_span_id_hex = current_span_id
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<String>();
+        // 检查缓存中的 tracestate
+        if let Some(current_tracestate) = self.request_headers.get("tracestate") {
+            log::error!("SP: Current tracestate in CACHE before modification: {}", current_tracestate);
+        } else {
+            log::error!("SP: No existing tracestate found in CACHE");
+        }
+
+        // 同时检查实际HTTP headers中的 tracestate
+        let actual_headers = self.get_http_request_headers();
+        let mut found_actual_tracestate = false;
+        for (key, value) in &actual_headers {
+            if key.to_lowercase() == "tracestate" {
+                log::error!("SP: Current tracestate in ACTUAL HTTP HEADERS before modification: {}", value);
+                found_actual_tracestate = true;
+            }
+        }
+        if !found_actual_tracestate {
+            log::error!("SP: No existing tracestate found in ACTUAL HTTP HEADERS");
+        }
+
+        // 使用 span_builder 中已生成的 current_span_id，确保一致性
+        let current_span_id_hex = self.span_builder.get_current_span_id_hex();
 
         // 获取当前的 trace ID (从 span_builder 中获取)
         let trace_id_hex = self.span_builder.get_trace_id_hex();
 
         // 生成标准的 traceparent 格式: 00-trace_id-span_id-01
         let traceparent_value = format!("00-{}-{}-01", trace_id_hex, current_span_id_hex);
-        
+
         log::error!("SP: Generated traceparent_value: {}", traceparent_value);
 
         // 获取现有的 tracestate
@@ -986,27 +992,49 @@ impl SpHttpContext {
         // 添加 x-sp-traceparent 条目，使用完整的 traceparent 格式
         tracestate_entries.insert(0, format!("x-sp-traceparent={}", traceparent_value));
 
-        // 构建新的 tracestate
-        let new_tracestate = tracestate_entries.join(",");
+         // 构建新的 tracestate
+         let new_tracestate = tracestate_entries.join(",");
 
-        log::error!(
-            "SP: Adding x-sp-traceparent to tracestate: {}",
-            new_tracestate
-        );
+         log::error!(
+             "SP: Adding x-sp-traceparent to tracestate: {}",
+             new_tracestate
+         );
 
         // 先删除现有的 tracestate header，然后添加新的
         log::error!("SP: *** BEFORE remove_http_request_header *** NEW VERSION");
+        
+        // 再次检查删除前的实际HTTP headers状态
+        let headers_before_remove = self.get_http_request_headers();
+        for (key, value) in &headers_before_remove {
+            if key.to_lowercase() == "tracestate" {
+                log::error!("SP: ACTUAL tracestate RIGHT BEFORE remove_http_request_header: {}", value);
+            }
+        }
+        
         self.remove_http_request_header("tracestate");
         log::error!("SP: *** AFTER remove_http_request_header *** NEW VERSION");
         
+        // 检查删除后的状态
+        let headers_after_remove = self.get_http_request_headers();
+        let mut found_after_remove = false;
+        for (key, value) in &headers_after_remove {
+            if key.to_lowercase() == "tracestate" {
+                log::error!("SP: ACTUAL tracestate AFTER remove_http_request_header: {}", value);
+                found_after_remove = true;
+            }
+        }
+        if !found_after_remove {
+            log::error!("SP: No tracestate found in ACTUAL HTTP HEADERS after remove_http_request_header");
+        }
+
         log::error!("SP: *** BEFORE add_http_request_header *** NEW VERSION");
         self.add_http_request_header("tracestate", &new_tracestate);
         log::error!("SP: Successfully added tracestate header - NEW VERSION");
-        
+
         // 同时更新本地缓存的 request_headers
         self.request_headers.insert("tracestate".to_string(), new_tracestate.clone());
         log::error!("SP: *** AFTER add_http_request_header *** NEW VERSION");
-        
+
         // 验证修改是否成功
         if let Some(updated_tracestate) = self.request_headers.get("tracestate") {
             log::error!("SP: Verified updated tracestate in cache: {}", updated_tracestate);
@@ -1383,10 +1411,13 @@ impl HttpContext for SpHttpContext {
     fn on_http_request_headers(&mut self, _num_headers: usize, end_of_stream: bool) -> Action {
         let traffic_direction = self.detect_traffic_direction();
         log::error!("SP: *** {} REQUEST HEADERS CALLBACK INVOKED ***", traffic_direction);
-
+        for (key, value) in self.get_http_request_headers() {
+            log::error!("SP: Request header before: {}: {}", key, value);
+        }
         // 首先获取初始的请求头用于 span builder 更新
         let mut initial_headers = HashMap::new();
         for (key, value) in self.get_http_request_headers() {
+            log::error!("SP: on_http_request_headers Request: {}: {}", key, value);
             initial_headers.insert(key, value);
         }
 
@@ -1419,7 +1450,6 @@ impl HttpContext for SpHttpContext {
         // 只记录所有头部用于调试
         for (key, value) in self.get_http_request_headers() {
             log::error!("SP: Request header: {}: {}", key, value);
-            // 不要覆盖 request_headers，因为 inject_trace_context_headers 已经更新了它
         }
 
         // If this is the end of the stream (no body), perform injection lookup now

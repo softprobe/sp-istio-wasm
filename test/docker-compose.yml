@@ -32,7 +32,7 @@ services:
 
   envoy-dict-app:
     image: envoyproxy/envoy:v1.27-latest
-    command: ["/usr/local/bin/envoy", "-c", "/etc/envoy/envoy.yaml", "--log-level", "debug"]
+    command: ["/usr/local/bin/envoy", "-c", "/etc/envoy/envoy.yaml", "--log-level", "info"]
     volumes:
       - ./envoy.yaml:/etc/envoy/envoy.yaml
       - ../target/wasm32-unknown-unknown/release/sp_istio_agent.wasm:/etc/envoy/sp_istio_agent.wasm

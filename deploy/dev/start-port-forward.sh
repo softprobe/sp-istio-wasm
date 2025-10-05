@@ -28,7 +28,7 @@ sleep 2
 
 # 启动 demo-ota 端口转发 (8080)
 echo "📱 启动 demo-ota 端口转发 (8080 -> 8080)..."
-kubectl port-forward svc/demo-ota 8080:8080 &
+kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80 &
 OTA_PF_PID=$!
 echo "✅ demo-ota 端口转发已启动 (PID: $OTA_PF_PID)"
 

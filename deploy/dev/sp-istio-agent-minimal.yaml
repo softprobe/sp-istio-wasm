@@ -6,7 +6,7 @@ metadata:
   namespace: istio-system
 spec:
   url: http://host.docker.internal:8000/sp_istio_agent.wasm
-  sha256: c13ba244777192ee6d02f8df1bc4ab17754faffab0b1822abc0b2368eb118f14
+  sha256: 7fd60ed75084f3df9b02849e50593c1320e878fe96ca33db9b1aade84ca98f80
   phase: AUTHN
   match:
     - mode: SERVER
@@ -14,7 +14,8 @@ spec:
   pluginConfig:
     service_name: "demo-ota-111111"
     api_key: "demo-ota-01"
-    sp_backend_url: "https://jaeger.softprobe.ai/"
+    sp_backend_url: "https://jaeger.softprobe.ai"
+    enable_inject: false
     collectionRules:
       http:
         server:

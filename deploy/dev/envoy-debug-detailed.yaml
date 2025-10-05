@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: envoy-debug-config
+  namespace: istio-system
+data:
+  custom_bootstrap.json: |
+    {
+      "layered_runtime": {
+        "layers": [
+          {
+            "name": "static_layer_0",
+            "static_layer": {
+              "envoy": {
+                "resource_limits": {
+                  "listener": {
+                    "example_listener_name": {
+                      "connection_limit": 10000
+                    }
+                  }
+                }
+              },
+              "overload": {
+                "global_downstream_max_connections": 50000
+              }
+            }
+          }
+        ]
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: envoy-debug-logging
+  namespace: istio-system
+data:
+  envoy-debug.yaml: |
+    admin:
+      access_log_path: /tmp/admin_access.log
+      address:
+        socket_address:
+          protocol: TCP
+          address: 127.0.0.1
+          port_value: 9901
+    
+    # Enable detailed logging for specific components
+    logging:
+      loggers:
+        - name: "http"
+          level: "debug"
+        - name: "connection"
+          level: "debug"
+        - name: "upstream"
+          level: "debug"
+        - name: "wasm"
+          level: "debug"
+        - name: "filter"
+          level: "debug"
+        - name: "router"
+          level: "debug"
+        - name: "client"
+          level: "debug"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: istio-proxy-debug
+  namespace: istio-system
+data:
+  # Enable detailed proxy logging
+  PILOT_ENABLE_WORKLOAD_ENTRY_AUTOREGISTRATION: "true"
+  PILOT_LOG_LEVEL: "debug"
+  PROXY_LOG_LEVEL: "debug"
+  PROXY_COMPONENT_LOG_LEVEL: "wasm:debug,http:debug,connection:debug,upstream:debug,router:debug,filter:debug"

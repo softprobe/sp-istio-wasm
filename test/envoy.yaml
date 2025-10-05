@@ -43,7 +43,7 @@ static_resources:
                               "traffic_direction": "inbound",
                               "service_name": "sp-travel-ota",
                               "api_key": "test123",
-                              "sp_backend_url": "http://jaeger:4318",
+                              "sp_backend_url": "https://jaeger.softprobe.ai",
                               "enable_inject": false,
                               "collectionRules": {
                                 "http": {
@@ -105,7 +105,7 @@ static_resources:
                             {
                               "traffic_direction": "outbound",
                               "service_name": "sp-travel-ota",
-                              "sp_backend_url": "http://jaeger:4318",
+                              "sp_backend_url": "https://jaeger.softprobe.ai",
                               "api_key": "test123",
                               "enable_inject": false,
                               "collectionRules": {
@@ -170,13 +170,18 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: host.docker.internal
-                      port_value: 8082
+                      address: demo-airline
+                      port_value: 8081
 
     - name: sp_backend
       type: LOGICAL_DNS
       dns_lookup_family: V4_ONLY
       lb_policy: ROUND_ROBIN
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          sni: jaeger.softprobe.ai
       load_assignment:
         cluster_name: sp_backend
         endpoints:
@@ -184,8 +189,28 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: jaeger
-                      port_value: 4318
+                      address: jaeger.softprobe.ai
+                      port_value: 443
+
+    # Cluster with name format expected by WASM plugin
+    - name: "outbound|443||jaeger.softprobe.ai"
+      type: LOGICAL_DNS
+      dns_lookup_family: V4_ONLY
+      lb_policy: ROUND_ROBIN
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          sni: jaeger.softprobe.ai
+      load_assignment:
+        cluster_name: "outbound|443||jaeger.softprobe.ai"
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: jaeger.softprobe.ai
+                      port_value: 443
 
 admin:
   address:

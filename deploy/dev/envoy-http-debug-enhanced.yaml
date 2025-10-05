@@ -1,0 +1,103 @@
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: debug-http-detailed
+spec:
+  meshConfig:
+    defaultConfig:
+      # Enable detailed access logs
+      proxyStatsMatcher:
+        inclusionRegexps:
+        - ".*_cx_.*"
+        - ".*_rq_.*"
+        - ".*circuit_breakers.*"
+        - ".*upstream_rq_retry.*"
+        - ".*upstream_rq_pending.*"
+        - ".*_no_route.*"
+      # Enhanced access log format with request/response bodies
+      accessLogFile: /dev/stdout
+      accessLogFormat: |
+        [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%"
+        %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT%
+        %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% "%REQ(X-FORWARDED-FOR)%"
+        "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
+        REQUEST_HEADERS: %REQ_HEADERS%
+        RESPONSE_HEADERS: %RESP_HEADERS%
+        REQUEST_BODY: %REQ_BODY%
+        RESPONSE_BODY: %RESP_BODY%
+        UPSTREAM_CLUSTER: %UPSTREAM_CLUSTER%
+        ROUTE_NAME: %ROUTE_NAME%
+      # Enable component-level debug logging
+      proxyMetadata:
+        PILOT_ENABLE_WORKLOAD_ENTRY_AUTOREGISTRATION: "true"
+        BOOTSTRAP_XDS_AGENT: "true"
+      # Set log levels for various components
+      componentLogLevel: "wasm:debug,http:debug,connection:debug,upstream:debug,router:debug,filter:debug,client:debug,misc:debug"
+  values:
+    pilot:
+      env:
+        PILOT_LOG_LEVEL: debug
+        EXTERNAL_ISTIOD: false
+    global:
+      logging:
+        level: "debug:http,wasm,connection,upstream,router,filter,client"
+      proxy:
+        logLevel: debug
+        componentLogLevel: "wasm:debug,http:debug,connection:debug,upstream:debug,router:debug,filter:debug,client:debug"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: envoy-http-debug-config
+  namespace: istio-system
+data:
+  envoy_bootstrap_debug.yaml: |
+    admin:
+      access_log_path: /tmp/admin_access.log
+      address:
+        socket_address:
+          protocol: TCP
+          address: 127.0.0.1
+          port_value: 15000
+    
+    # Detailed logging configuration
+    logging:
+      loggers:
+        - name: "http"
+          level: "debug"
+        - name: "connection"
+          level: "debug"
+        - name: "upstream"
+          level: "debug"
+        - name: "wasm"
+          level: "debug"
+        - name: "filter"
+          level: "debug"
+        - name: "router"
+          level: "debug"
+        - name: "client"
+          level: "debug"
+        - name: "misc"
+          level: "debug"
+        - name: "assert"
+          level: "debug"
+        - name: "backtrace"
+          level: "debug"
+    
+    # Enable HTTP request/response body logging
+    http_filters:
+      - name: envoy.filters.http.wasm
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.wasm.v3.Wasm
+          config:
+            name: "sp-istio-agent"
+            configuration:
+              "@type": type.googleapis.com/google.protobuf.StringValue
+              value: |
+                {
+                  "enable_inject": false,
+                  "debug_mode": true,
+                  "log_request_body": true,
+                  "log_response_body": true,
+                  "log_headers": true
+                }

@@ -511,11 +511,9 @@ impl SpHttpContext {
 
     // Dispatch injection HTTP call directly using context's dispatch_http_call method
     fn dispatch_injection_lookup(&mut self) -> Result<u32, String> {
-        if !self.config.enable_inject {
-            return Err("Injection is not allowed".to_string());
-        }
+        return Ok(0);
 
-        log::info!("SP Injection: Preparing injection lookup data");
+        /*log::info!("SP Injection: Preparing injection lookup data");
 
         // Create inject span for injection lookup using references to avoid cloning
         let traces_data = self.span_builder.create_inject_span(
@@ -555,7 +553,7 @@ impl SpHttpContext {
             http_headers,
             Some(&otel_data),
             vec![],
-            std::time::Duration::from_secs(30),
+            std::time::Duration::from_secs(5),
         ) {
             Ok(call_id) => {
                 log::info!("SP Injection: Injection lookup dispatched with call_id: {}", call_id);
@@ -565,11 +563,13 @@ impl SpHttpContext {
                 log::error!("SP Injection: Failed to dispatch injection lookup: {:?}", e);
                 Err(format!("Dispatch failed: {:?}", e))
             }
-        }
+        }*/
     }
 
     // Dispatch async call to save extracted data
     fn dispatch_async_extraction_save(&mut self) -> Result<(), String> {
+        log::info!("SP: Starting async extraction save");
+        
         // 检查采集规则
         if !self.should_collect_by_rules() {
             log::info!("SP: Data extraction skipped based on collection rules");
@@ -590,47 +590,36 @@ impl SpHttpContext {
         // Serialize to protobuf
         let otel_data = serialize_traces_data(&traces_data)
             .map_err(|e| format!("Serialization error: {}", e))?;
-
+        
+        log::info!("SP Extraction: Serialized traces data size: {} bytes", otel_data.len());
+        
+        let backend_url = format!("{}/v1/traces", self.config.sp_backend_url);
+        log::info!("SP Extraction: - Target URL: {}", backend_url);
+        log::info!("SP Extraction: - Request body size: {} bytes", otel_data.len());
+        
         // Get backend authority from configured URL
         let authority = self.get_backend_authority();
 
         // Prepare HTTP headers for the async save call
         let content_length = otel_data.len().to_string();
-        let http_headers = vec![
+        let mut http_headers = vec![
             (":method", "POST"),
             (":path", "/v1/traces"),
             (":authority", &authority),
             ("content-type", "application/x-protobuf"),
             ("content-length", &content_length),
+            ("x-api-key", &self.config.api_key),
         ];
-
-        log::info!("SP Extraction: Dispatching async save call, body size: {}", otel_data.len());
-        log::info!("SP Extraction: Authority: {}, Headers: {:?}", authority, http_headers);
         
-        // 打印请求体信息（protobuf格式）
-        let body_preview = if otel_data.len() > 50 {
-            let hex_preview: String = otel_data[..50].iter()
-                .map(|b| format!("{:02x}", b))
-                .collect::<Vec<_>>()
-                .join(" ");
-            format!("{} ... (truncated, total {} bytes)", hex_preview, otel_data.len())
-        } else {
-            otel_data.iter()
-                .map(|b| format!("{:02x}", b))
-                .collect::<Vec<_>>()
-                .join(" ")
-        };
-        log::info!("SP Extraction: Request body (protobuf hex): {}", body_preview);
+        log::info!("SP Extraction: Dispatching HTTP call with headers:");
+        for (key, value) in &http_headers {
+            log::info!("SP Extraction:   {}: {}", key, value);
+        }
         
-        // 打印protobuf的基本信息
-        log::info!("SP Extraction: Protobuf size: {} bytes, first 4 bytes: {:02x?}", 
-                  otel_data.len(), 
-                  if otel_data.len() >= 4 { &otel_data[..4] } else { &otel_data });
+        // 添加超时时间的日志
+        let timeout = std::time::Duration::from_secs(5);
+        log::info!("SP Extraction: Using timeout: {:?}", timeout);
         
-        // 打印完整的目标地址信息
-        log::info!("SP Extraction: Target URL: https://{}/v1/traces", authority);
-        log::info!("SP Extraction: Backend URL from config: {}", self.config.sp_backend_url);
-
         // Fire and forget async call to /v1/traces endpoint for storage
         // Using dynamically built Envoy cluster name based on backend URL
         let cluster_name = self.get_backend_cluster_name();
@@ -641,16 +630,27 @@ impl SpHttpContext {
             http_headers,
             Some(&otel_data),
             vec![],
-            std::time::Duration::from_secs(30),
+            timeout,
         ) {
             Ok(call_id) => {
-                log::info!("SP Extraction: Async save dispatched with call_id: {}", call_id);
+                log::info!("SP Extraction: HTTP call dispatched successfully!");
+                log::info!("SP Extraction: - Call ID: {}", call_id);
+                log::info!("SP Extraction: - Waiting for response in on_http_call_response callback...");
+                
                 self.pending_save_call_token = Some(call_id);
+                log::info!("SP: Async extraction save dispatched successfully");
+                log::info!("SP: HTTP response will be available in on_http_call_response callback");
+                
+                // 添加额外的调试信息
+                log::info!("SP: Current pending tokens - inject: {:?}, save: {:?}", 
+                          self.pending_inject_call_token, self.pending_save_call_token);
+                
                 Ok(())
             }
-            Err(e) => {
-                log::error!("SP Extraction: Failed to dispatch async save: {:?}", e);
-                Err(format!("Async save failed: {:?}", e))
+            Err(status) => {
+                let error_msg = format!("SP Extraction: Failed to dispatch HTTP call, status: {:?}", status);
+                log::error!("{}", error_msg);
+                Err(error_msg)
             }
         }
     }
@@ -718,36 +718,69 @@ impl Context for SpHttpContext {
         log::info!("SP: *** HTTP CALL RESPONSE RECEIVED *** token: {}, body_size: {}", token_id, body_size);
         log::info!("SP: pending_inject_call_token = {:?}", self.pending_inject_call_token);
         log::info!("SP: pending_save_call_token = {:?}", self.pending_save_call_token);
-        log::info!("SP: All headers from response:");
+        
+        // Get response status
+        let status_code = self.get_http_call_response_header(":status")
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(500);
+
+        // Get all response headers
         let response_headers = self.get_http_call_response_headers();
-        for (key, value) in &response_headers {
-            log::info!("SP:   {}: {}", key, value);
-        }
+        
+        // Get response body
+        let response_body = if body_size > 0 {
+            self.get_http_call_response_body(0, body_size).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
 
         // Check if this is the response to our async save call
         if let Some(pending_save_token) = self.pending_save_call_token {
             if pending_save_token == token_id {
-                log::info!("SP: Processing async save response");
+                log::info!("SP: *** PROCESSING ASYNC SAVE RESPONSE ***");
                 self.pending_save_call_token = None;
                 
-                // Get response status
-                let status_code = self.get_http_call_response_header(":status")
-                    .and_then(|s| s.parse::<u32>().ok())
-                    .unwrap_or(500);
-
-                log::info!("SP: Async save response status: {}", status_code);
+                // 打印HTTP响应的完整信息
+                log::info!("SP: HTTP Response Status: {}", status_code);
+                log::info!("SP: HTTP Response Headers ({} headers):", response_headers.len());
+                for (key, value) in &response_headers {
+                    log::info!("SP:   {}: {}", key, value);
+                }
                 
-                if status_code == 200 {
-                    log::info!("SP: Async save successful - traces data sent to OTEL Collector");
+                // 打印response body (无论状态码如何)
+                if response_body.len() > 0 {
+                    log::info!("SP: HTTP Response Body ({} bytes): {}", 
+                              response_body.len(), 
+                              String::from_utf8_lossy(&response_body));
+                    
+                    // 如果是二进制数据，也打印十六进制格式
+                    if !response_body.iter().all(|&b| b.is_ascii() && !b.is_ascii_control()) {
+                        let hex_preview = if response_body.len() > 50 {
+                            let hex_str: String = response_body[..50].iter()
+                                .map(|b| format!("{:02x}", b))
+                                .collect::<Vec<_>>()
+                                .join(" ");
+                            format!("{} ... (truncated, total {} bytes)", hex_str, response_body.len())
+                        } else {
+                            response_body.iter()
+                                .map(|b| format!("{:02x}", b))
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        };
+                        log::info!("SP: HTTP Response Body (hex): {}", hex_preview);
+                    }
+                } else {
+                    log::info!("SP: HTTP Response Body: (empty)");
+                }
+                
+                // 根据状态码进行处理
+                if status_code >= 200 && status_code < 300 {
+                    log::info!("SP: Async save completed successfully (status: {})", status_code);
                 } else {
                     log::warn!("SP: Async save failed with status: {}", status_code);
-                    if body_size > 0 {
-                        let response_body = self.get_http_call_response_body(0, body_size)
-                            .unwrap_or_default();
-                        log::warn!("SP: Error response body: {}", String::from_utf8_lossy(&response_body));
-                    }
                 }
-                return; // Don't process as injection response
+                
+                return;
             }
         }
 
@@ -918,17 +951,20 @@ impl HttpContext for SpHttpContext {
 
         if end_of_stream {
             log::info!("SP: End of response stream reached");
-            // Check if response is successful (200) using already captured headers
+            // Check response status using already captured headers
             if let Some(status) = self.response_headers.get(":status") {
                 log::info!("SP: Response status: {}", status);
-                if status == "200" {
-                    log::info!("SP: Successful response, storing in agent asynchronously");
-                    // Send to Softprobe asynchronously (fire and forget)
-                    if let Err(e) = self.dispatch_async_extraction_save() {
+                // For testing purposes, process all responses (not just 200)
+                log::info!("SP: Processing response (status: {}), storing in agent asynchronously", status);
+                // Send to Softprobe asynchronously (fire and forget)
+                match self.dispatch_async_extraction_save() {
+                    Ok(()) => {
+                        log::info!("SP: Async extraction save dispatched successfully");
+                        log::info!("SP: HTTP response will be available in on_http_call_response callback");
+                    }
+                    Err(e) => {
                         log::error!("SP: Failed to store agent: {}", e);
                     }
-                } else {
-                    log::info!("SP: Response status {} - skipping extraction", status);
                 }
             } else {
                 log::warn!("SP: No :status header found in response");

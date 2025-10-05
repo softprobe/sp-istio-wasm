@@ -1,9 +1,8 @@
 version: '3.8'
 
 services:
-  # 应用服务 (dict-app)
   demo-ota:
-    image: gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/demo-ota:v0.0.3
+    image: gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/demo-ota:v1.2.1
     networks:
       - service-network
       - otel-network
@@ -13,15 +12,27 @@ services:
       - HTTPS_PROXY=http://envoy-dict-app:15001
       - http_proxy=http://envoy-dict-app:15001
       - https_proxy=http://envoy-dict-app:15001
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+      - OTEL_EXPORTER_OTLP_ENDPOINT=https://jaeger.softprobe.ai
     ports:
       - "8080:8080"
-    # 如果您希望入站流量也经过 Envoy，可以在应用中显式调用
-    # 例如：curl http://envoy-dict-app:15006/your-endpoint
+  demo-airline:
+    image: gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/demo-airline:v0.0.3
+    networks:
+      - service-network
+      - otel-network
+    ports:
+      - "8081:8081"
+    environment:
+      # 显式配置代理 
+      - HTTP_PROXY=http://envoy-dict-app:15001
+      - HTTPS_PROXY=http://envoy-dict-app:15001
+      - http_proxy=http://envoy-dict-app:15001
+      - https_proxy=http://envoy-dict-app:15001
+      - OTEL_EXPORTER_OTLP_ENDPOINT=https://jaeger.softprobe.ai
 
-  # dict-app 的 Envoy sidecar
   envoy-dict-app:
-    image: softprobe/sp-envoy:v1.0.9-test
+    image: envoyproxy/envoy:v1.27-latest
+    command: ["/usr/local/bin/envoy", "-c", "/etc/envoy/envoy.yaml", "--log-level", "debug"]
     volumes:
       - ./envoy.yaml:/etc/envoy/envoy.yaml
       - ../target/wasm32-unknown-unknown/release/sp_istio_agent.wasm:/etc/envoy/sp_istio_agent.wasm
@@ -29,30 +40,9 @@ services:
       - service-network
       - otel-network
     ports:
-      - "15001:15001"  # 出站流量
-      - "15006:15006"  # 入站流量
+      - "15001:15001" # 出站流量
+      - "15006:15006" # 入站流量
 
-  # httpbin 服务
-  httpbin:
-    image: kennethreitz/httpbin
-    container_name: httpbin
-    networks:
-      - service-network
-
-  jaeger:
-    image: jaegertracing/all-in-one:latest
-    container_name: jaeger
-    environment:
-      - COLLECTOR_OTLP_ENABLED=true
-    ports:
-      # Jaeger UI 端口，您可以通过 http://localhost:16686 访问
-      - "16686:16686"
-      # OTLP gRPC 端口，用于接收来自 OpenTelemetry Collector 的数据
-      - "4317:4317"
-      # OTLP HTTP 端口，用于接收来自 WASM 插件的数据
-      - "4318:4318"
-    networks:
-      - otel-network
 
 networks:
   service-network:

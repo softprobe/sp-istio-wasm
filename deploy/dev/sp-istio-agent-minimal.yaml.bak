@@ -7,7 +7,7 @@ metadata:
   namespace: istio-system
 spec:
   url: http://host.docker.internal:8000/target/wasm32-unknown-unknown/release/sp_istio_agent.wasm
-  sha256: d0aca153737a4c2727f0a2a8c5868d92170cf223cec395957c0a7c9043a98101
+  sha256: 45c22bb1056846448e38a3136bbc61f45c7e48760324115a51ad5b2c3dfa0aa8
   phase: AUTHN
   match:
     - mode: SERVER
@@ -39,7 +39,7 @@ metadata:
   namespace: istio-system
 spec:
   url: http://192.168.31.207:8000/target/wasm32-unknown-unknown/release/sp_istio_agent.wasm
-  sha256: d0aca153737a4c2727f0a2a8c5868d92170cf223cec395957c0a7c9043a98101
+  sha256: 45c22bb1056846448e38a3136bbc61f45c7e48760324115a51ad5b2c3dfa0aa8
   phase: AUTHN
   match:
     - mode: CLIENT

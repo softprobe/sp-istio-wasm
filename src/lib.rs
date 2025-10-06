@@ -769,7 +769,7 @@ impl SpHttpContext {
 
     // Dispatch injection HTTP call directly using context's dispatch_http_call method
     fn dispatch_injection_lookup(&mut self) -> Result<u32, String> {
-        return Ok(0);
+        return Err("Injection lookup is disabled".to_string());
 
         /*log::info!("SP Injection: Preparing injection lookup data");
 

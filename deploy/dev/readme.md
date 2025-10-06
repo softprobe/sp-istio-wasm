@@ -46,7 +46,7 @@ SP Istio WASM Plugin is a distributed tracing enhancement plugin based on Istio 
 ### Access Applications
 - **demo-ota Application**: http://localhost:8080/
 - **demo-airline Application**: http://localhost:8081/
-- **Jaeger Tracing UI**: http://localhost:16686
+- **Jaeger Tracing UI**: https://jaeger.softprobe.ai/
 
 ### Test Distributed Tracing
 ```bash
@@ -69,7 +69,7 @@ curl http://localhost:8081/api/flights
 ```
 
 ### View Tracing Data in Jaeger
-1. Visit http://localhost:16686
+1. Visit https://jaeger.softprobe.ai/
 2. Select `demo-ota` or `demo-airline` from the Service dropdown
 3. Click "Find Traces" to view tracing data
 

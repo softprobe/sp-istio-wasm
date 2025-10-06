@@ -46,7 +46,7 @@ SP Istio WASM 插件是一个基于 Istio 服务网格的分布式追踪增强�
 ### 访问应用
 - **demo-ota 应用**: http://localhost:8080/
 - **demo-airline 应用**: http://localhost:8081/
-- **Jaeger 追踪界面**: http://localhost:16686
+- **Jaeger 追踪界面**: https://jaeger.softprobe.ai/
 
 ### 测试分布式追踪
 ```bash
@@ -69,7 +69,7 @@ curl http://localhost:8081/api/flights
 ```
 
 ### 在 Jaeger 中查看追踪数据
-1. 访问 http://localhost:16686
+1. 访问 https://jaeger.softprobe.ai/
 2. 在 Service 下拉菜单中选择 `demo-ota` 或 `demo-airline`
 3. 点击 "Find Traces" 查看追踪数据
 

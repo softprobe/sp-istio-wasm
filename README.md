@@ -37,8 +37,7 @@ This will set up:
 - SP Istio Agent WASM plugin
 
 Access the applications:
-- Bookinfo: http://localhost:8080/productpage
-- Jaeger UI: http://localhost:16686
+- Jaeger UI: https://jaeger.softprobe.ai/
 
 ### 1. Build the WASM Extension
 

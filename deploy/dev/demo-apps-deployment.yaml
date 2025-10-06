@@ -30,7 +30,7 @@ spec:
         fsGroup: 2000
       containers:
         - name: demo-ota
-          image: gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/demo-ota:v1.2.1
+          image:  docker.io/softprobe/sp-ota:v1.0.0
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
@@ -100,7 +100,7 @@ spec:
         fsGroup: 2000
       containers:
         - name: demo-airline
-          image: gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/demo-airline:v0.0.3
+          image: docker.io/softprobe/sp-airline:v1.0.0
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false

@@ -23,30 +23,6 @@ if ! kubectl get deployment opentelemetry-operator-controller-manager -n opentel
 fi
 echo "✅ OpenTelemetry Operator 已就绪"
 
-# 检查并拉取 demo-ota 镜像
-echo "📥 准备 demo-ota 镜像..."
-OTA_IMAGE="gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/demo-ota:v1.2.1"
-if ! docker image inspect $OTA_IMAGE > /dev/null 2>&1; then
-    echo "🔄 拉取 demo-ota 镜像..."
-    docker pull $OTA_IMAGE
-else
-    echo "✅ demo-ota 镜像已存在本地"
-fi
-echo "📥 加载 demo-ota 镜像到 Kind 集群..."
-kind load docker-image $OTA_IMAGE --name sp-demo-cluster
-
-# 检查并拉取 demo-airline 镜像
-echo "📥 准备 demo-airline 镜像..."
-AIRLINE_IMAGE="gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/demo-airline:v0.0.3"
-if ! docker image inspect $AIRLINE_IMAGE > /dev/null 2>&1; then
-    echo "🔄 拉取 demo-airline 镜像..."
-    docker pull $AIRLINE_IMAGE
-else
-    echo "✅ demo-airline 镜像已存在本地"
-fi
-echo "📥 加载 demo-airline 镜像到 Kind 集群..."
-kind load docker-image $AIRLINE_IMAGE --name sp-demo-cluster
-
 # 部署应用
 echo "📦 部署演示应用（demo-ota 和 demo-airline，带 OpenTelemetry 自动注入）..."
 kubectl apply -f demo-apps-deployment.yaml

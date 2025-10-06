@@ -12,7 +12,6 @@ spec:
   match:
     - mode: SERVER
   pluginConfig:
-    api_key: "demo-airline-01"
     sp_backend_url: "https://jaeger.softprobe.ai"
     enable_inject: false
     traffic_direction: "server"

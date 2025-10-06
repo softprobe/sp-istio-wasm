@@ -7,12 +7,11 @@ metadata:
   namespace: istio-system
 spec:
   url: http://host.docker.internal:8000/target/wasm32-unknown-unknown/release/sp_istio_agent.wasm
-  sha256: 8e99dd1d3e52f7203125934bec94288a8defc80067e04e9809b91e0ee35def09
+  sha256: 862dd8b07a4546a106c8cc4c183a0c6b497c5ecd70aa11a5adf54eb767820440
   phase: AUTHN
   match:
     - mode: SERVER
   pluginConfig:
-    api_key: "demo-airline-01"
     sp_backend_url: "https://jaeger.softprobe.ai"
     enable_inject: false
     traffic_direction: "server"
@@ -38,7 +37,7 @@ metadata:
   namespace: istio-system
 spec:
   url: http://host.docker.internal:8000/target/wasm32-unknown-unknown/release/sp_istio_agent.wasm
-  sha256: 8e99dd1d3e52f7203125934bec94288a8defc80067e04e9809b91e0ee35def09
+  sha256: 862dd8b07a4546a106c8cc4c183a0c6b497c5ecd70aa11a5adf54eb767820440
   phase: AUTHN
   match:
     - mode: CLIENT

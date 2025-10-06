@@ -58,7 +58,7 @@ impl Default for ExemptionRule {
 #[derive(Debug, Clone)]
 pub struct Config {
     pub sp_backend_url: String,
-    //pub enable_inject: bool,
+    //pub sp_enable_cache: bool,
     pub service_name: String,              // 添加service_name字段
     pub traffic_direction: Option<String>, // 改为可选字段
     pub collection_rules: Vec<CollectionRule>,
@@ -70,7 +70,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             sp_backend_url: "https://o.softprobe.ai".to_string(),
-            // enable_inject: false,
+            // sp_enable_cache: false,
             traffic_direction: None, // 默认为 None，表示自动检测
             service_name: "default-service".to_string(), // 默认服务名
             collection_rules: vec![],
@@ -133,14 +133,14 @@ impl RootContext for SpRootContext {
                         log::info!("SP: Configured backend URL: {}", self.config.sp_backend_url);
                     }
 
-                  /* // 解析 enable_inject
-                    if let Some(enable_inject) =
-                        config_json.get("enable_inject").and_then(|v| v.as_bool())
+                  /* // 解析 sp_enable_cache
+                    if let Some(sp_enable_cache) =
+                        config_json.get("sp_enable_cache").and_then(|v| v.as_bool())
                     {
-                        self.config.enable_inject = enable_inject;
+                        self.config.sp_enable_cache = sp_enable_cache;
                         log::info!(
                             "SP: Configured injection enabled: {}",
-                            self.config.enable_inject
+                            self.config.sp_enable_cache
                         );
                     } */
 
@@ -859,6 +859,22 @@ impl SpHttpContext {
             self.url_path.as_deref(),
         );
 
+        // Print span details
+        if let Some(resource_spans) = traces_data.resource_spans.first() {
+            if let Some(scope_spans) = resource_spans.scope_spans.first() {
+                for (i, span) in scope_spans.spans.iter().enumerate() {
+                    let trace_id_hex = span.trace_id.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                    let span_id_hex = span.span_id.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                    let parent_span_id_hex = span.parent_span_id.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                    
+                    log::error!(
+                        "SP: Span[{}] - trace_id: {}, span_id: {}, parent_span_id: {}, name: {}",
+                        i, trace_id_hex, span_id_hex, parent_span_id_hex, span.name
+                    );
+                }
+            }
+        }
+
         // Serialize to protobuf
         let otel_data = serialize_traces_data(&traces_data)
             .map_err(|e| format!("Serialization error: {}", e))?;
@@ -943,13 +959,13 @@ impl SpHttpContext {
 
     /// Inject W3C Trace Context headers into the outgoing request
     fn inject_trace_context_headers(&mut self) {
-        log::error!("SP: *** INJECT_TRACE_CONTEXT_HEADERS CALLED *** NEW VERSION");
+        log::debug!("SP: *** INJECT_TRACE_CONTEXT_HEADERS CALLED *** NEW VERSION");
 
         // 检查缓存中的 tracestate
         if let Some(current_tracestate) = self.request_headers.get("tracestate") {
-            log::error!("SP: Current tracestate in CACHE before modification: {}", current_tracestate);
+            log::debug!("SP: Current tracestate in CACHE before modification: {}", current_tracestate);
         } else {
-            log::error!("SP: No existing tracestate found in CACHE");
+            log::debug!("SP: No existing tracestate found in CACHE");
         }
 
         // 同时检查实际HTTP headers中的 tracestate
@@ -958,19 +974,19 @@ impl SpHttpContext {
         let mut found_actual_traceparent = false;
         for (key, value) in &actual_headers {
             if key.to_lowercase() == "tracestate" {
-                log::error!("SP: Current tracestate in ACTUAL HTTP HEADERS before modification: {}", value);
+                log::debug!("SP: Current tracestate in ACTUAL HTTP HEADERS before modification: {}", value);
                 found_actual_tracestate = true;
             }
             if key.to_lowercase() == "traceparent" {
-                log::error!("SP: Current traceparent in ACTUAL HTTP HEADERS before modification: {}", value);
+                log::debug!("SP: Current traceparent in ACTUAL HTTP HEADERS before modification: {}", value);
                 found_actual_traceparent = true;
             }
         }
         if !found_actual_tracestate {
-            log::error!("SP: No existing tracestate found in ACTUAL HTTP HEADERS");
+            log::debug!("SP: No existing tracestate found in ACTUAL HTTP HEADERS");
         }
         if !found_actual_traceparent {
-            log::error!("SP: No existing traceparent found in ACTUAL HTTP HEADERS");
+            log::debug!("SP: No existing traceparent found in ACTUAL HTTP HEADERS");
         }
 
         // 使用 span_builder 中已生成的 current_span_id，确保一致性
@@ -982,7 +998,7 @@ impl SpHttpContext {
         // 生成标准的 traceparent 格式: 00-trace_id-span_id-01
         let traceparent_value = format!("00-{}-{}-01", trace_id_hex, current_span_id_hex);
 
-        log::error!("SP: Generated traceparent_value: {}", traceparent_value);
+        log::debug!("SP: Generated traceparent_value: {}", traceparent_value);
 
         // 获取现有的 tracestate
         let mut tracestate_entries = Vec::new();
@@ -1003,45 +1019,45 @@ impl SpHttpContext {
          // 构建新的 tracestate
          let new_tracestate = tracestate_entries.join(",");
 
-         log::error!(
+         log::debug!(
              "SP: Adding x-sp-traceparent to tracestate: {}",
              new_tracestate
          );
 
         // 先删除现有的 tracestate header，然后添加新的
-        log::error!("SP: *** BEFORE remove_http_request_header *** NEW VERSION");
+        log::debug!("SP: *** BEFORE remove_http_request_header *** NEW VERSION");
         
         // 再次检查删除前的实际HTTP headers状态
         let headers_before_remove = self.get_http_request_headers();
         for (key, value) in &headers_before_remove {
             if key.to_lowercase() == "tracestate" {
-                log::error!("SP: ACTUAL tracestate RIGHT BEFORE remove_http_request_header: {}", value);
+                log::debug!("SP: ACTUAL tracestate RIGHT BEFORE remove_http_request_header: {}", value);
             }
         }
         
         self.remove_http_request_header("tracestate");
-        log::error!("SP: *** AFTER remove_http_request_header *** NEW VERSION");
+        log::debug!("SP: *** AFTER remove_http_request_header *** NEW VERSION");
         
         // 检查删除后的状态
         let headers_after_remove = self.get_http_request_headers();
         let mut found_after_remove = false;
         for (key, value) in &headers_after_remove {
             if key.to_lowercase() == "tracestate" {
-                log::error!("SP: ACTUAL tracestate AFTER remove_http_request_header: {}", value);
+                log::debug!("SP: ACTUAL tracestate AFTER remove_http_request_header: {}", value);
                 found_after_remove = true;
             }
         }
         if !found_after_remove {
-            log::error!("SP: No tracestate found in ACTUAL HTTP HEADERS after remove_http_request_header");
+            log::debug!("SP: No tracestate found in ACTUAL HTTP HEADERS after remove_http_request_header");
         }
 
-        log::error!("SP: *** BEFORE add_http_request_header *** NEW VERSION");
+        log::debug!("SP: *** BEFORE add_http_request_header *** NEW VERSION");
         self.add_http_request_header("tracestate", &new_tracestate);
-        log::error!("SP: Successfully added tracestate header - NEW VERSION");
+        log::debug!("SP: Successfully added tracestate header - NEW VERSION");
 
         // 如果没有 traceparent 头部，也添加标准的 traceparent
         if !found_actual_traceparent {
-            log::error!("SP: Adding missing traceparent header: {}", traceparent_value);
+            log::debug!("SP: Adding missing traceparent header: {}", traceparent_value);
             self.add_http_request_header("traceparent", &traceparent_value);
             // 同时更新本地缓存
             self.request_headers.insert("traceparent".to_string(), traceparent_value);
@@ -1049,12 +1065,24 @@ impl SpHttpContext {
 
         // 同时更新本地缓存的 request_headers
         self.request_headers.insert("tracestate".to_string(), new_tracestate.clone());
-        log::error!("SP: *** AFTER add_http_request_header *** NEW VERSION");
+        log::debug!("SP: *** AFTER add_http_request_header *** NEW VERSION");
 
-        // 验证修改是否成功
-        if let Some(updated_tracestate) = self.request_headers.get("tracestate") {
-            log::error!("SP: Verified updated tracestate in cache: {}", updated_tracestate);
-        }
+        // 处理 x-sp-num header：获取当前值并加1
+        let current_sp_num = self.request_headers
+            .get("x-sp-num")
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(0); // 如果不存在或解析失败，默认为0
+        
+        let new_sp_num = current_sp_num + 1;
+        let new_sp_num_str = new_sp_num.to_string();
+        
+        log::debug!("SP: x-sp-num: {} -> {}", current_sp_num, new_sp_num);
+        
+        // 添加或更新 x-sp-num header
+        self.add_http_request_header("x-sp-num", &new_sp_num_str);
+        // 同时更新本地缓存
+        self.request_headers.insert("x-sp-num".to_string(), new_sp_num_str);
+        
     }
 
     /// Extract and propagate W3C Trace Context from response headers
@@ -1064,7 +1092,7 @@ impl SpHttpContext {
         let mut trace_id: Option<Vec<u8>> = None;
 
         if let Some(tracestate) = self.request_headers.get("tracestate") {
-            log::error!("SP: Found tracestate in request: {}", tracestate);
+            log::debug!("SP: Found tracestate in request: {}", tracestate);
 
             // 解析 tracestate 中的 x-sp-traceparent
             for entry in tracestate.split(',') {
@@ -1074,11 +1102,16 @@ impl SpHttpContext {
                     if let Some((parsed_trace_id, parsed_span_id)) =
                         self.parse_traceparent_value(value)
                     {
+                        let trace_id_hex = parsed_trace_id.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                        let span_id_hex = parsed_span_id.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                        
                         trace_id = Some(parsed_trace_id);
                         parent_span_id = Some(parsed_span_id);
-                        log::error!(
-                            "SP: Extracted trace context from x-sp-traceparent: {}",
-                            value
+                        log::debug!(
+                            "SP: Extracted trace context from x-sp-traceparent: {}, trace_id: {}, parent_span_id: {}",
+                            value,
+                            trace_id_hex,
+                            span_id_hex
                         );
                         break;
                     }
@@ -1109,7 +1142,7 @@ impl SpHttpContext {
             }
 
             // 更新 span builder
-            self.span_builder = self.span_builder.clone().with_context(&updated_headers);
+           // self.span_builder = self.span_builder.clone().with_context(&updated_headers);
         }
 
         // 检查响应中是否包含 W3C Trace Context headers（保持原有逻辑）
@@ -1167,6 +1200,80 @@ impl SpHttpContext {
     }
 
     // 自动检测流量方向
+    fn is_from_istio_ingressgateway(&self) -> bool {
+        // 方法1: 通过 workload labels 检测
+        if let Some(workload_name) = self.get_property(vec!["node", "metadata", "WORKLOAD_NAME"]) {
+            if let Ok(name) = String::from_utf8(workload_name) {
+                if name.contains("istio-ingressgateway") {
+                    return true;
+                }
+            }
+        }
+
+        // 方法2: 通过 app label 检测
+        if let Some(app_label) = self.get_property(vec!["node", "metadata", "app"]) {
+            if let Ok(app) = String::from_utf8(app_label) {
+                if app == "istio-ingressgateway" {
+                    return true;
+                }
+            }
+        }
+
+        // 方法3: 通过 cluster metadata 检测
+        if let Some(cluster_metadata) = self.get_property(vec!["cluster_metadata"]) {
+            if let Ok(metadata) = String::from_utf8(cluster_metadata) {
+                if metadata.contains("istio-ingressgateway") {
+                    return true;
+                }
+            }
+        }
+
+        // 方法4: 通过 source workload 检测
+        if let Some(source_workload) = self.get_property(vec!["source", "workload", "name"]) {
+            if let Ok(workload) = String::from_utf8(source_workload) {
+                if workload.contains("istio-ingressgateway") {
+                    return true;
+                }
+            }
+        }
+
+        // 方法5: 通过 node ID 检测
+        if let Some(node_id) = self.get_property(vec!["node", "id"]) {
+            if let Ok(id) = String::from_utf8(node_id) {
+                if id.contains("istio-ingressgateway") {
+                    return true;
+                }
+            }
+        }
+
+        // 方法6: 通过 x-envoy-peer-metadata-id 头部检测
+        if let Some(peer_metadata) = self.request_headers.get("x-envoy-peer-metadata-id") {
+            if peer_metadata.contains("istio-ingressgateway") {
+                return true;
+            }
+        }
+
+        // 方法7: 检查当前运行的服务是否就是 istio-ingressgateway
+        if let Some(service_name) = self.get_property(vec!["node", "metadata", "NAME"]) {
+            if let Ok(name) = String::from_utf8(service_name) {
+                if name.contains("istio-ingressgateway") {
+                    return true;
+                }
+            }
+        }
+
+        // 方法8: 检查 LABELS
+        if let Some(labels) = self.get_property(vec!["node", "metadata", "LABELS"]) {
+            if let Ok(labels_str) = String::from_utf8(labels) {
+                if labels_str.contains("istio-ingressgateway") {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     fn detect_traffic_direction(&self) -> String {
         // 方法1: 通过监听器地址检测
         if let Some(listener_direction) = self.get_property(vec!["listener_direction"]) {
@@ -1427,6 +1534,7 @@ impl HttpContext for SpHttpContext {
     fn on_http_request_headers(&mut self, _num_headers: usize, end_of_stream: bool) -> Action {
         let traffic_direction = self.detect_traffic_direction();
         log::error!("SP: *** {} REQUEST HEADERS CALLBACK INVOKED ***", traffic_direction);
+        
         // 首先获取初始的请求头用于 span builder 更新
         let mut initial_headers = HashMap::new();
         for (key, value) in self.get_http_request_headers() {
@@ -1434,12 +1542,18 @@ impl HttpContext for SpHttpContext {
             initial_headers.insert(key, value);
         }
 
+        // 将初始头部复制到 request_headers 缓存，这样检测函数就能访问到头部信息
+        self.request_headers = initial_headers.clone();
+        
+        // 检查是否来自 istio-ingressgateway，如果是则跳过处理
+        if self.is_from_istio_ingressgateway() {
+            log::error!("SP: Skipping processing for traffic from istio-ingressgateway");
+            return Action::Continue;
+        }
+
         // 使用自动检测的流量方向，而不是配置中的 traffic_direction
         let service_name = self.config.service_name.clone();
         let api_key = self.config.api_key.clone();
-
-        log::error!("DEBUG: Before span builder update - service_name: '{}', traffic_direction: '{}' (auto-detected), api_key: '{}'",
-                   service_name, traffic_direction, api_key);
 
         // Update url.host and url.path from properties/headers
         self.update_url_info();
@@ -1453,8 +1567,7 @@ impl HttpContext for SpHttpContext {
             .with_api_key(api_key)
             .with_context(&initial_headers);
 
-        // 将初始头部复制到 request_headers 缓存
-        self.request_headers = initial_headers;
+        // 不需要再次复制到 request_headers，因为已经在上面做过了
 
         // Inject W3C Trace Context headers - 这会修改发送给上游的头部
         self.inject_trace_context_headers();
@@ -1487,6 +1600,11 @@ impl HttpContext for SpHttpContext {
     }
 
     fn on_http_request_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
+        // Skip processing if traffic is from istio-ingressgateway
+        if self.is_from_istio_ingressgateway() {
+            return Action::Continue;
+        }
+
         log::error!(
             "SP: Processing request body, size: {}, end_of_stream: {}",
             body_size,
@@ -1519,6 +1637,11 @@ impl HttpContext for SpHttpContext {
     }
 
     fn on_http_response_headers(&mut self, num_headers: usize, end_of_stream: bool) -> Action {
+        // Skip processing if traffic is from istio-ingressgateway
+        if self.is_from_istio_ingressgateway() {
+            return Action::Continue;
+        }
+
         log::error!(
             "SP: *** RESPONSE HEADERS CALLBACK INVOKED *** num_headers: {}, end_of_stream: {}",
             num_headers,
@@ -1542,6 +1665,11 @@ impl HttpContext for SpHttpContext {
     }
 
     fn on_http_response_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
+        // Skip processing if traffic is from istio-ingressgateway
+        if self.is_from_istio_ingressgateway() {
+            return Action::Continue;
+        }
+
         log::error!(
             "SP: *** RESPONSE BODY CALLBACK INVOKED *** size: {}, end_of_stream: {}",
             body_size,

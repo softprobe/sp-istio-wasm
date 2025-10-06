@@ -10,7 +10,7 @@ echo "🚀 部署演示应用（demo-ota 和 demo-airline）..."
 # 检查集群连接
 echo "🔍 检查集群连接..."
 if ! kubectl cluster-info &> /dev/null; then
-    echo "❌ 无法连接到 Kubernetes 集群，请先运行 ./cluster-setup.sh"
+    echo "❌ 无法连接到 Kubernetes 集群，请先运行 ./scripts/cluster-setup.sh"
     exit 1
 fi
 echo "✅ 集群连接正常"
@@ -18,17 +18,17 @@ echo "✅ 集群连接正常"
 # 检查 OpenTelemetry Operator 是否就绪
 echo "📊 检查 OpenTelemetry Operator 状态..."
 if ! kubectl get deployment opentelemetry-operator-controller-manager -n opentelemetry-operator-system &> /dev/null; then
-    echo "❌ OpenTelemetry Operator 未安装，请先运行 ./cluster-setup.sh"
+    echo "❌ OpenTelemetry Operator 未安装，请先运行 ./scripts/cluster-setup.sh"
     exit 1
 fi
 echo "✅ OpenTelemetry Operator 已就绪"
 
 # 部署应用
 echo "📦 部署演示应用（demo-ota 和 demo-airline，带 OpenTelemetry 自动注入）..."
-kubectl apply -f demo-apps-deployment.yaml
+kubectl apply -f deploy/demo-apps-deployment.yaml
 
 echo "🌐 部署 Istio Gateway 和 VirtualService..."
-kubectl apply -f demo-istio-gateway.yaml
+kubectl apply -f deploy/demo-istio-gateway.yaml
 
 # 等待部署就绪
 echo "⏳ 等待应用部署就绪..."

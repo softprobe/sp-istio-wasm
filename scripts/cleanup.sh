@@ -35,8 +35,8 @@ safe_execute "kubectl delete destinationrule -n istio-system softprobe-backend-t
 
 # 4. 清理演示应用
 echo "📱 清理演示应用..."
-safe_execute "kubectl delete -f demo-apps-deployment.yaml" "删除演示应用"
-safe_execute "kubectl delete -f demo-istio-gateway.yaml" "删除 Istio Gateway"
+safe_execute "kubectl delete -f deploy/demo-apps-deployment.yaml" "删除演示应用"
+safe_execute "kubectl delete -f deploy/demo-istio-gateway.yaml" "删除 Istio Gateway"
 
 # 5. 清理 OpenTelemetry 配置
 echo "📊 清理 OpenTelemetry 配置..."
@@ -88,5 +88,5 @@ echo "✅ Istio 已卸载"
 echo "✅ Kind 集群已删除"
 echo ""
 echo "💡 提示："
-echo "- 如需重新部署，请运行 ./cluster-setup.sh"
+echo "- 如需重新部署，请运行 ./scripts/cluster-setup.sh"
 echo "- 所有本地数据已清理，包括追踪数据"

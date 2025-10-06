@@ -76,7 +76,7 @@ fi
 
 # 6. 应用 OpenTelemetry 自动注入配置
 echo "📊 应用 OpenTelemetry 自动注入配置..."
-kubectl apply -f auto-instrumentation.yaml
+kubectl apply -f deploy/examples/auto-instrumentation.yaml
 
 # 等待配置处理
 echo "⏳ 等待配置处理..."
@@ -87,7 +87,7 @@ echo ""
 echo "🎉 基础环境设置完成！"
 echo ""
 echo "📋 下一步操作："
-echo "1. 运行 ./deploy-apps.sh 部署演示应用"
-echo "2. 运行 ./install-wasm.sh 安装 WASM 插件"
-echo "3. 运行 ./start-port-forward.sh 启动端口转发"
+echo "1. 运行 ./scripts/deploy-demo-apps.sh 部署演示应用"
+echo "2. 运行 ./scripts/install-wasm-plugin.sh 安装 WASM 插件"
+echo "3. 运行 ./scripts/start-port-forwarding.sh 启动端口转发"
 echo "4. 访问应用进行测试"

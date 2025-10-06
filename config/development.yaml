@@ -1,0 +1,68 @@
+# SP-Istio Agent - Development Environment Configuration
+# Optimized for local development and testing
+
+apiVersion: extensions.istio.io/v1alpha1
+kind: WasmPlugin
+metadata:
+  name: sp-istio-agent-dev
+  namespace: istio-system
+spec:
+  url: oci://softprobe/sp-istio-wasm:dev
+  sha256: placeholder-hash-will-be-updated-by-build
+  pluginConfig:
+    # Backend Configuration
+    sp_backend_url: "https://dev.softprobe.ai"
+    api_key: "dev-api-key-placeholder"
+    
+    # Cache Configuration (shorter TTL for testing)
+    enable_inject: true
+    cache_ttl_seconds: 300  # 5 minutes
+    max_cache_size_mb: 50   # Smaller cache for dev
+    
+    # Traffic Configuration
+    traffic_direction: "outbound"
+    collectionRules:
+      http:
+        client:
+          # Cache all API calls in development
+          - host: ".*\\.local"
+            paths: ["/api/.*", "/v1/.*"]
+          - host: "httpbin\\.org"
+            paths: ["/.*"]  # For testing
+          # Exclude health checks and metrics
+          - host: ".*"
+            paths: ["/health", "/healthz", "/metrics", "/ready"]
+            exclude: true
+    
+    # Performance Configuration (relaxed for dev)
+    async_timeout_ms: 10000  # 10 seconds for debugging
+    max_concurrent_requests: 50
+    
+    # Observability (verbose for development)
+    service_name: "dev-cluster"
+    enable_detailed_logging: true
+    log_level: "debug"
+    
+    # Development Features
+    bypass_cache: false
+    force_cache_miss: false  # Set to true to test cache miss behavior
+    debug_headers: true      # Add debug headers to responses
+---
+# ServiceEntry for development backend
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: softprobe-dev-backend
+  namespace: istio-system
+spec:
+  hosts:
+  - dev.softprobe.ai
+  ports:
+  - number: 443
+    name: https
+    protocol: HTTPS
+  - number: 80
+    name: http
+    protocol: HTTP
+  location: MESH_EXTERNAL
+  resolution: DNS

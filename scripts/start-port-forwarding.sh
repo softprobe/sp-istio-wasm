@@ -15,7 +15,7 @@ fi
 
 # 检查应用是否运行
 if ! kubectl get pod -l app=demo-ota | grep -q Running; then
-    echo "❌ demo-ota 应用未运行，请先运行 ./deploy-apps.sh"
+    echo "❌ demo-ota 应用未运行，请先运行 ./scripts/deploy-demo-apps.sh"
     exit 1
 fi
 

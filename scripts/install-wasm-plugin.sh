@@ -15,13 +15,13 @@ fi
 
 # 检查 Istio 是否已安装
 if ! kubectl get namespace istio-system &> /dev/null; then
-    echo "❌ Istio 未安装，请先运行 ./cluster-setup.sh"
+    echo "❌ Istio 未安装，请先运行 ./scripts/cluster-setup.sh"
     exit 1
 fi
 
 # 检查演示应用是否已部署
 if ! kubectl get deployment demo-ota &> /dev/null; then
-    echo "❌ 演示应用未部署，请先运行 ./deploy-apps.sh"
+    echo "❌ 演示应用未部署，请先运行 ./scripts/deploy-demo-apps.sh"
     exit 1
 fi
 
@@ -33,7 +33,7 @@ read -p "API Key: " api_key
 
 # 创建临时配置文件
 temp_config=$(mktemp)
-cp sp-istio-agent-minimal.yaml "$temp_config"
+cp deploy/minimal.yaml "$temp_config"
 
 # 如果用户输入了 API Key，则更新配置文件
 if [ -n "$api_key" ]; then
@@ -76,7 +76,7 @@ echo ""
 echo "🎉 WASM 插件安装完成！"
 echo ""
 echo "📋 下一步操作："
-echo "1. 运行 ./start-port-forward.sh 启动端口转发"
+echo "1. 运行 ./scripts/start-port-forwarding.sh 启动端口转发"
 echo "2. 访问 http://localhost:8080/ 测试 demo-ota 应用"
 echo "3. 访问 http://localhost:8081/ 测试 demo-airline 应用"
 echo "4. 访问 https://jaeger.softprobe.ai 查看 Jaeger 追踪"

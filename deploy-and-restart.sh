@@ -137,7 +137,7 @@ sleep 10
 print_status "第五步：查看 airline pod 的 istio-proxy 日志..."
 
 # 查找第一个 airline pod
-AIRLINE_POD=$(kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' | grep -i airline | head -1)
+AIRLINE_POD=$(kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' | grep -i ota | head -1)
 
 if [ -n "$AIRLINE_POD" ]; then
     read namespace pod <<< "$AIRLINE_POD"

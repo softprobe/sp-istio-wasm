@@ -47,9 +47,9 @@ help: ## Show this help message
 
 check-deps: ## Check if required dependencies are installed
 	$(call print_info,"Checking dependencies...")
-	@command -v cargo >/dev/null || ($(call print_error,"Rust/Cargo not found. Install from https://rustup.rs/") && exit 1)
-	@command -v kubectl >/dev/null || ($(call print_warning,"kubectl not found. Install for Kubernetes deployment"))
-	@rustup target list --installed | grep -q $(WASM_TARGET) || ($(call print_info,"Installing WASM target...") && rustup target add $(WASM_TARGET))
+	@command -v cargo >/dev/null || (echo "$(RED)❌ Rust/Cargo not found. Install from https://rustup.rs/$(RESET)" >&2 && exit 1)
+	@command -v kubectl >/dev/null || (echo "$(YELLOW)⚠️  kubectl not found. Install for Kubernetes deployment$(RESET)")
+	@rustup target list --installed | grep -q $(WASM_TARGET) || (echo "$(BLUE)ℹ️  Installing WASM target...$(RESET)" && rustup target add $(WASM_TARGET))
 	$(call print_success,"Dependencies check completed")
 
 clean: ## Clean build artifacts
@@ -62,11 +62,11 @@ build: check-deps ## Build WASM binary
 	$(call print_info,"Building WASM binary...")
 	@cargo build --target $(WASM_TARGET) --release
 	@if [ -f "$(WASM_FILE)" ]; then \
-		$(call print_success,"WASM binary built: $(WASM_FILE)"); \
+		echo "$(GREEN)✅ WASM binary built: $(WASM_FILE)$(RESET)"; \
 		$(MAKE) hash; \
 		$(MAKE) update-configs; \
 	else \
-		$(call print_error,"Build failed!"); \
+		echo "$(RED)❌ Build failed!$(RESET)"; \
 		exit 1; \
 	fi
 
@@ -82,8 +82,8 @@ hash: ## Calculate SHA256 hash of WASM binary
 	fi
 	@HASH=$$(cat $(HASH_FILE)); \
 	SIZE=$$(ls -lh $(WASM_FILE) | awk '{print $$5}'); \
-	$(call print_success,"SHA256: $$HASH"); \
-	$(call print_info,"File size: $$SIZE")
+	echo "$(GREEN)✅ SHA256: $$HASH$(RESET)"; \
+	echo "$(BLUE)ℹ️  File size: $$SIZE$(RESET)"
 
 update-configs: ## Update deployment configs with new WASM hash
 	$(call print_info,"Updating deployment configurations...")
@@ -91,14 +91,14 @@ update-configs: ## Update deployment configs with new WASM hash
 		HASH=$$(cat $(HASH_FILE)); \
 		if [ -f "deploy/minimal.yaml" ]; then \
 			sed -i.bak "s/sha256: .*/sha256: $$HASH/" deploy/minimal.yaml; \
-			$(call print_success,"Updated deploy/minimal.yaml"); \
+			echo "$(GREEN)✅ Updated deploy/minimal.yaml$(RESET)"; \
 		fi; \
 		if [ -f "deploy/production.yaml" ]; then \
 			sed -i.bak "s/sha256: .*/sha256: $$HASH/" deploy/production.yaml; \
-			$(call print_success,"Updated deploy/production.yaml"); \
+			echo "$(GREEN)✅ Updated deploy/production.yaml$(RESET)"; \
 		fi; \
 	else \
-		$(call print_error,"Hash file not found. Run 'make build' first"); \
+		echo "$(RED)❌ Hash file not found. Run 'make build' first$(RESET)"; \
 		exit 1; \
 	fi
 
@@ -108,7 +108,7 @@ test: build ## Run local tests with Envoy
 
 docker-build: build ## Build Docker images (requires VERSION)
 	@if [ -z "$(VERSION)" ] || [ "$(VERSION)" = "latest" ]; then \
-		$(call print_error,"VERSION required. Usage: make docker-build VERSION=v1.0.0"); \
+		echo "$(RED)❌ VERSION required. Usage: make docker-build VERSION=v1.0.0$(RESET)"; \
 		exit 1; \
 	fi
 	$(call print_info,"Building Docker images for version $(VERSION)...")

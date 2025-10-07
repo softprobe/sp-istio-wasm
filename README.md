@@ -141,32 +141,6 @@ cargo build --target wasm32-unknown-unknown --release
 ```bash
 rustup target add wasm32-unknown-unknown
 ```
-
-### Project Structure
-
-```
-sp-istio/
-├── src/
-│   ├── lib.rs           # Main WASM extension
-│   ├── otel.rs          # OpenTelemetry integration
-├── deploy/
-│   ├── dev/             # Local development environment
-│   │   ├── cluster-setup.sh      # Setup Kind cluster, Istio, Jaeger, OpenTelemetry
-│   │   ├── deploy-apps.sh        # Deploy Bookinfo application
-│   │   ├── install-wasm.sh       # Install SP Istio Agent WASM plugin
-│   │   ├── start-port-forward.sh # Start port forwarding
-│   │   ├── cleanup.sh            # Clean up all resources
-│   │   ├── instrumentation.yaml  # OpenTelemetry auto-instrumentation config
-│   │   └── readme.md             # Local development guide
-│   ├── sp-istio-agent.yaml       # Global WasmPlugin manifest
-│   └── test-bookinfo.yaml        # Scoped test manifest for Bookinfo
-├── test/               # Local testing configurations
-├── opentelemetry/      # OpenTelemetry proto files
-├── build.sh            # Build script
-├── test.sh             # Test script
-└── build-and-push.sh   # Image build/publish script
-```
-
 ## Troubleshooting
 
 ### WASM Loading Issues

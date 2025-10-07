@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 // Note: SystemTime is not available in WASM runtime, will use proxy-wasm host functions
 use prost::Message;
+use serde::{Serialize, Deserialize};
 use proxy_wasm;
 // use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -34,6 +35,7 @@ pub use opentelemetry::proto::trace::v1::{TracesData, ResourceSpans, ScopeSpans,
 pub struct SpanBuilder {
     trace_id: Vec<u8>,
     parent_span_id: Option<Vec<u8>>,
+    current_span_id: Vec<u8>,  // 添加当前 span ID 字段
     service_name: String,
     traffic_direction: String,  // 添加traffic_direction字段
     api_key: String,
@@ -45,6 +47,7 @@ impl SpanBuilder {
         Self {
             trace_id: generate_trace_id(),
             parent_span_id: None,
+            current_span_id: generate_span_id(),  // 初始化当前 span ID
             service_name: "default-service".to_string(),
             traffic_direction: "outbound".to_string(),  // 默认值
             api_key: String::new(),
@@ -68,26 +71,70 @@ impl SpanBuilder {
         self.api_key = api_key;
         self
     }
+    
+    /// Check if session_id is present and not empty
+    pub fn has_session_id(&self) -> bool {
+        !self.session_id.is_empty()
+    }
+    
+    /// Get session_id value for logging purposes
+    pub fn get_session_id(&self) -> &str {
+        &self.session_id
+    }
+    
+    /// Get trace_id as hex string
+    pub fn get_current_span_id_hex(&self) -> String {
+        self.current_span_id.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+    }
+
+    pub fn get_trace_id_hex(&self) -> String {
+        self.trace_id.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+    }
 
     pub fn with_context(mut self, headers: &HashMap<String, String>) -> Self {
-        // Extract trace context from headers if present
-        if let Some(traceparent) = headers.get("traceparent") {
-            if let Some((trace_id, span_id)) = parse_traceparent(traceparent) {
-                self.trace_id = trace_id;
-                self.parent_span_id = Some(span_id);
+        // Extract trace context from tracestate x-sp-traceparent if present
+        if let Some(tracestate) = headers.get("tracestate") {
+            log::error!("DEBUG: Found tracestate in headers: {}", tracestate);
+            
+            // 解析 tracestate 中的 x-sp-traceparent
+            for entry in tracestate.split(',') {
+                let entry = entry.trim();
+                if let Some(value) = entry.strip_prefix("x-sp-traceparent=") {
+                    log::error!("DEBUG: Found x-sp-traceparent in tracestate: {}", value);
+                    // 解析完整的 traceparent 格式: 00-trace_id-span_id-01
+                    if let Some((trace_id, span_id)) = parse_traceparent(value) {
+                        self.trace_id = trace_id;
+                        self.parent_span_id = Some(span_id);
+                        log::error!("DEBUG: Successfully parsed trace context from x-sp-traceparent");
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 如果没有从 tracestate 中解析到 trace context，尝试从标准的 traceparent 头部解析
+        if self.trace_id.is_empty() {
+            if let Some(traceparent) = headers.get("traceparent") {
+                log::error!("DEBUG: Found traceparent in headers: {}", traceparent);
+                // 解析标准的 traceparent 格式: 00-trace_id-span_id-01
+                if let Some((trace_id, span_id)) = parse_traceparent(traceparent) {
+                    self.trace_id = trace_id;
+                    self.parent_span_id = Some(span_id);
+                    log::error!("DEBUG: Successfully parsed trace context from traceparent");
+                }
             }
         }
 
         // Get session ID from headers directly
-        log::info!("DEBUG: Looking for session_id in headers...");
+        log::error!("DEBUG: Looking for session_id in headers...");
         let session_id_found = headers.get("x-sp-session-id")
             .or_else(|| headers.get("sp_session_id"));
 
         if let Some(session_id) = session_id_found {
-            log::info!("DEBUG: Found session_id in headers: '{}'", session_id);
+            log::error!("DEBUG: Found session_id in headers: '{}'", session_id);
             self.session_id = session_id.clone();
         } else {
-            log::info!("DEBUG: No session_id found in headers: {:?}", headers.keys().collect::<Vec<_>>());
+            log::error!("DEBUG: No session_id found in headers: {:?}", headers.keys().collect::<Vec<_>>());
         }
 
         // If no valid trace context found, generate new one
@@ -98,6 +145,7 @@ impl SpanBuilder {
         self
     }
 
+    #[allow(dead_code)]
     pub fn create_inject_span(
         &self,
         request_headers: &HashMap<String, String>,
@@ -105,7 +153,7 @@ impl SpanBuilder {
         url_host: Option<&str>,
         url_path: Option<&str>,
     ) -> TracesData {
-        let span_id = generate_span_id();
+        let span_id = self.current_span_id.clone();  // 使用 SpanBuilder 中的 current_span_id
         let mut attributes = Vec::new();
 
         // Add service name attribute
@@ -238,10 +286,10 @@ impl SpanBuilder {
         url_host: Option<&str>,
         url_path: Option<&str>,
     ) -> TracesData {
-        let span_id = generate_span_id();
+        let span_id = self.current_span_id.clone();
         let mut attributes = Vec::new();
 
-        log::info!("DEBUG: service_name value: '{}'", self.service_name);
+        log::error!("DEBUG: service_name value: '{}'", self.service_name);
         attributes.push(KeyValue {
             key: "sp.service.name".to_string(),
             value: Some(AnyValue {
@@ -250,7 +298,7 @@ impl SpanBuilder {
         });
 
         // Add traffic direction attribute
-        log::info!("DEBUG: traffic_direction value: '{}'", self.traffic_direction);
+        log::error!("DEBUG: traffic_direction value: '{}'", self.traffic_direction);
         attributes.push(KeyValue {
             key: "sp.traffic.direction".to_string(),
             value: Some(AnyValue {
@@ -275,9 +323,9 @@ impl SpanBuilder {
         });
 
         // Add API key attribute if present
-        log::info!("DEBUG: api_key value: '{}'", self.api_key);
+        log::error!("DEBUG: api_key value: '{}'", self.api_key);
         if !self.api_key.is_empty() {
-            log::info!("DEBUG: Adding api_key attribute");
+            log::error!("DEBUG: Adding api_key attribute");
             attributes.push(KeyValue {
                 key: "sp.api.key".to_string(),
                 value: Some(AnyValue {
@@ -285,13 +333,13 @@ impl SpanBuilder {
                 }),
             });
         } else {
-            log::info!("DEBUG: api_key is empty, not adding attribute");
+            log::error!("DEBUG: api_key is empty, not adding attribute");
         }
 
         // Add session ID attribute if present
-        log::info!("DEBUG: session_id value: '{}'", self.session_id);
+        log::error!("DEBUG: session_id value: '{}'", self.session_id);
         if !self.session_id.is_empty() {
-            log::info!("DEBUG: Adding session_id attribute");
+            log::error!("DEBUG: Adding session_id attribute");
             attributes.push(KeyValue {
                 key: "sp.session.id".to_string(),
                 value: Some(AnyValue {
@@ -299,7 +347,7 @@ impl SpanBuilder {
                 }),
             });
         } else {
-            log::info!("DEBUG: session_id is empty, not adding attribute");
+            log::error!("DEBUG: session_id is empty, not adding attribute");
         }
 
         // Add request headers
@@ -454,6 +502,62 @@ impl SpanBuilder {
 
     }
 
+// 简化的JSON结构用于序列化
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonTracesData {
+    pub resource_spans: Vec<JsonResourceSpans>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonResourceSpans {
+    pub resource: JsonResource,
+    pub scope_spans: Vec<JsonScopeSpans>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonResource {
+    pub attributes: Vec<JsonKeyValue>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonScopeSpans {
+    pub spans: Vec<JsonSpan>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonSpan {
+    pub trace_id: String,
+    pub span_id: String,
+    pub parent_span_id: Option<String>,
+    pub name: String,
+    pub kind: i32,
+    pub start_time_unix_nano: u64,
+    pub end_time_unix_nano: u64,
+    pub attributes: Vec<JsonKeyValue>,
+    pub status: JsonStatus,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonKeyValue {
+    pub key: String,
+    pub value: JsonAnyValue,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonAnyValue {
+    pub string_value: Option<String>,
+    pub int_value: Option<i64>,
+    pub double_value: Option<f64>,
+    pub bool_value: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct JsonStatus {
+    pub code: i32,
+    pub message: String,
+}
+
+// 保留原有的protobuf序列化函数
 pub fn serialize_traces_data(traces_data: &TracesData) -> Result<Vec<u8>, prost::EncodeError> {
     let mut buf = Vec::new();
     traces_data.encode(&mut buf)?;

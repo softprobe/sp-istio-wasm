@@ -7,6 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [features]
+default = []
 non-wasm = []
 
 [[bin]]
@@ -15,7 +16,8 @@ path = "test_endpoints.rs"
 required-features = ["non-wasm"]
 
 [dependencies]
-proxy-wasm = "0.2.3"
+proxy-wasm = "0.2.4"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 base64 = "0.22"
 prost = "0.12"
@@ -32,3 +34,9 @@ tonic = { version = "0.12", features = ["prost"] }
 tokio = { version = "1.40", features = ["full"] }
 reqwest = { version = "0.12", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+mockall = "0.12"
+tempfile = "3.10"
+assert_matches = "1.5"
+futures = "0.3"

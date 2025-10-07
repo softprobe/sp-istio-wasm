@@ -1,25 +1,53 @@
 # SP-Istio Agent
 
-A transparent agent extension for Istio using WebAssembly (WASM) written in Rust.
+**Business-level distributed tracing and analytics for Istio service mesh**
 
-## Overview
+Zero-code changes required • Complete request visibility • Advanced troubleshooting
 
-This project extends Istio's capabilities by implementing a custom WASM extension that intercepts outgoing HTTP requests, integrates with Softprobe for caching decisions, and manages agent storage asynchronously.
+## What is SP-Istio Agent?
+
+SP-Istio Agent is a WebAssembly (WASM) plugin for Istio that captures complete HTTP request/response data and sends it to Softprobe for business-level analytics and troubleshooting without modifying application code.
+
+### Key Benefits
+
+- **🔍 Complete Visibility**: Capture full HTTP request/response data across your service mesh
+- **🚀 Faster Troubleshooting**: Business-level tracing reduces debugging time from hours to minutes  
+- **📊 Data Analytics**: Rich insights into API usage patterns and business flows
+- **⚡ Zero Intrusion**: No application code changes required
+- **🔒 Enterprise Ready**: Production-grade security and performance
 
 ## Quick Start
 
-### Minimal one-file install (cluster)
+See [docs/quickstart.md](docs/quickstart.md) for complete setup instructions.
+
+### Prerequisites
+
+- **Operating System**: macOS (or Linux with docker)
+- **Required Tools**:
+  - [Docker Desktop](https://www.docker.com/products/docker-desktop)
+  - [Kind](https://kind.sigs.k8s.io/) - `brew install kind`
+  - [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl-macos/) - `brew install kubectl`
+  - [Istio CLI](https://istio.io/latest/docs/setup/getting-started/#download) - `curl -L https://istio.io/downloadIstio | sh -`
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio/main/deploy/sp-istio-agent-minimal.yaml
+./scripts/cluster-setup.sh      # Create base environment  
+./scripts/deploy-demo-apps.sh   # Deploy demo applications
+./scripts/install-wasm-plugin.sh # Install SP Istio plugin
+./scripts/start-port-forwarding.sh # Start port forwarding
 ```
 
-This installs the global WasmPlugin and the HTTPS ServiceEntry in one step.
+**Access**: http://localhost:8080, http://localhost:8081, https://jaeger.softprobe.ai
+
+### Production Deployment
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio/main/deploy/minimal.yaml
+```
 
 ### 1. Build the WASM Extension
 
 ```bash
-./build.sh
+make build
 ```
 
 This will:
@@ -30,7 +58,7 @@ This will:
 ### 2. Test Locally (Recommended)
 
 ```bash
-./test.sh
+make test
 ```
 
 This will:
@@ -113,22 +141,6 @@ cargo build --target wasm32-unknown-unknown --release
 ```bash
 rustup target add wasm32-unknown-unknown
 ```
-
-### Project Structure
-
-```
-sp-istio/
-├── src/
-│   ├── lib.rs           # Main WASM extension
-│   ├── otel.rs          # OpenTelemetry integration
-├── deploy/             # Istio WasmPlugin manifests
-├── test/               # Local testing configurations
-├── opentelemetry/      # OpenTelemetry proto files
-├── build.sh            # Build script
-├── test.sh             # Test script
-└── build-and-push.sh   # Image build/publish script
-```
-
 ## Troubleshooting
 
 ### WASM Loading Issues

@@ -43,7 +43,7 @@ fi
 # Function to update hash in configs
 update_configs() {
     if [ ! -f "target/wasm32-unknown-unknown/release/sp_istio_agent.wasm.sha256" ]; then
-        print_error "SHA256 hash file not found. Run ./build.sh first."
+        print_error "SHA256 hash file not found. Run make build first."
         exit 1
     fi
     

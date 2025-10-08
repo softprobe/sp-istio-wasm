@@ -6,8 +6,8 @@ metadata:
   name: sp-istio-agent-server
   namespace: istio-system
 spec:
-  url: oci://docker.io/softprobe/sp-istio-wasm:v1.0.14-https
-  sha256: 9b830f922b23716b64f8405a393186593438d13708c4d2de341ded4d9e4e5bf7
+  url: oci://docker.io/softprobe/sp-istio-wasm:v1.2.5
+  sha256: 824405f7bd9b6e97c9762d3056e8de7ddb606497ae213dae53284434949fc33e
   phase: AUTHN
   match:
     - mode: SERVER
@@ -36,8 +36,8 @@ metadata:
   name: sp-istio-agent-client
   namespace: istio-system
 spec:
-  url: oci://docker.io/softprobe/sp-istio-wasm:v1.0.14-https
-  sha256: 9b830f922b23716b64f8405a393186593438d13708c4d2de341ded4d9e4e5bf7
+  url: oci://docker.io/softprobe/sp-istio-wasm:v1.2.5
+  sha256: 824405f7bd9b6e97c9762d3056e8de7ddb606497ae213dae53284434949fc33e
   phase: AUTHN
   match:
     - mode: CLIENT

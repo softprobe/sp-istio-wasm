@@ -128,7 +128,8 @@ impl SpanBuilder {
         // Get session ID from headers directly
         log::error!("DEBUG: Looking for session_id in headers...");
         let session_id_found = headers.get("x-sp-session-id")
-            .or_else(|| headers.get("sp_session_id"));
+            .or_else(|| headers.get("sp_session_id"))
+            .or_else(|| headers.get("x-session-id"));
 
         if let Some(session_id) = session_id_found {
             log::error!("DEBUG: Found session_id in headers: '{}'", session_id);

@@ -106,6 +106,10 @@ test: build ## Run local tests with Envoy
 	$(call print_info,"Running local tests...")
 	@./scripts/test.sh
 
+integration-test: build ## Run comprehensive integration test with Softprobe backend verification
+	$(call print_info,"Running integration test with Softprobe backend...")
+	@./scripts/integration-test.sh
+
 docker-build: build ## Build Docker images (requires VERSION)
 	@if [ -z "$(VERSION)" ] || [ "$(VERSION)" = "latest" ]; then \
 		echo "$(RED)❌ VERSION required. Usage: make docker-build VERSION=v1.0.0$(RESET)"; \

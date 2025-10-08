@@ -22,6 +22,7 @@ pub struct SpHttpContext {
     pub(crate) config: Config,
     pub(crate) url_host: Option<String>,
     pub(crate) url_path: Option<String>,
+    pub(crate) is_from_ingressgateway: bool,  // Cache to avoid calling get_request_header during response phase
 }
 
 impl SpHttpContext {
@@ -48,6 +49,7 @@ impl SpHttpContext {
             injected: false,
             url_host: None,
             url_path: None,
+            is_from_ingressgateway: false,  // Initialize to false, will be set during request processing
         }
     }
     // Dispatch injection HTTP call (disabled)
@@ -340,8 +342,11 @@ impl HttpContext for SpHttpContext {
         // Copy to request_headers cache
         self.request_headers = initial_headers.clone();
         
+        // Cache the ingressgateway check result to avoid calling get_request_header during response phase
+        self.is_from_ingressgateway = crate::traffic::TrafficAnalyzer::is_from_istio_ingressgateway(self);
+        
         // Check if from istio-ingressgateway, skip if so
-        if crate::traffic::TrafficAnalyzer::is_from_istio_ingressgateway(self) {
+        if self.is_from_ingressgateway {
             log::error!("SP: Skipping processing for traffic from istio-ingressgateway");
             return Action::Continue;
         }
@@ -382,7 +387,7 @@ impl HttpContext for SpHttpContext {
     }
 
     fn on_http_request_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
-        if crate::traffic::TrafficAnalyzer::is_from_istio_ingressgateway(self) {
+        if self.is_from_ingressgateway {
             return Action::Continue;
         }
 
@@ -406,8 +411,16 @@ impl HttpContext for SpHttpContext {
         Action::Continue
     }
 
-    fn on_http_response_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
-        if crate::traffic::TrafficAnalyzer::is_from_istio_ingressgateway(self) || self.injected {
+    fn on_http_response_headers(&mut self, num_headers: usize, end_of_stream: bool) -> Action {
+        log::error!("SP: on_http_response_headers called - num_headers: {}, end_of_stream: {}", num_headers, end_of_stream);
+        
+        if self.is_from_ingressgateway || self.injected {
+            return Action::Continue;
+        }
+
+        // Skip header processing if no headers are expected
+        if num_headers == 0 {
+            log::error!("SP: No response headers to process, skipping header capture");
             return Action::Continue;
         }
 
@@ -423,7 +436,7 @@ impl HttpContext for SpHttpContext {
     }
 
     fn on_http_response_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
-        if crate::traffic::TrafficAnalyzer::is_from_istio_ingressgateway(self) || self.injected {
+        if self.is_from_ingressgateway || self.injected {
             return Action::Continue;
         }
 

@@ -24,7 +24,7 @@ jobs:
         targets: wasm32-unknown-unknown
 
     - name: Cache Rust dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -58,7 +58,7 @@ jobs:
 
     - name: Upload test artifacts on failure
       if: failure()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: test-artifacts
         path: |

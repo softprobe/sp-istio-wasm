@@ -61,8 +61,7 @@ update_cargo_version() {
     local clean_version="${version#v}"  # Remove 'v' prefix if present
     
     if [ -f "Cargo.toml" ]; then
-        sed -i.bak "s/^version = .*/version = \"$clean_version\"/" Cargo.toml
-        rm -f Cargo.toml.bak
+        sed -i "" "s/^version = .*/version = \"$clean_version\"/" Cargo.toml
         print_success "Updated Cargo.toml to version $clean_version"
     else
         print_error "Cargo.toml not found"
@@ -77,16 +76,14 @@ update_deployment_manifests() {
     
     # Update minimal.yaml
     if [ -f "deploy/minimal.yaml" ]; then
-        sed -i.bak "s|oci://softprobe/sp-istio-wasm:.*|oci://softprobe/sp-istio-wasm:$version|" deploy/minimal.yaml
-        rm -f deploy/minimal.yaml.bak
+        sed -i "" "s|oci://softprobe/sp-istio-wasm:.*|oci://softprobe/sp-istio-wasm:$version|" deploy/minimal.yaml
         print_success "Updated deploy/minimal.yaml"
         ((updated++))
     fi
     
     # Update production.yaml
     if [ -f "deploy/production.yaml" ]; then
-        sed -i.bak "s|oci://softprobe/sp-istio-wasm:.*|oci://softprobe/sp-istio-wasm:$version|" deploy/production.yaml
-        rm -f deploy/production.yaml.bak
+        sed -i "" "s|oci://softprobe/sp-istio-wasm:.*|oci://softprobe/sp-istio-wasm:$version|" deploy/production.yaml
         print_success "Updated deploy/production.yaml"
         ((updated++))
     fi
@@ -94,8 +91,7 @@ update_deployment_manifests() {
     # Update examples
     for file in deploy/examples/*.yaml; do
         if [ -f "$file" ] && grep -q "sp-istio-wasm" "$file"; then
-            sed -i.bak "s|oci://softprobe/sp-istio-wasm:.*|oci://softprobe/sp-istio-wasm:$version|" "$file"
-            rm -f "${file}.bak"
+            sed -i "" "s|oci://softprobe/sp-istio-wasm:.*|oci://softprobe/sp-istio-wasm:$version|" "$file"
             print_success "Updated $file"
             ((updated++))
         fi

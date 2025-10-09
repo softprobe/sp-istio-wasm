@@ -36,7 +36,7 @@ See [docs/quickstart.md](docs/quickstart.md) for complete setup instructions.
 ./scripts/start-port-forwarding.sh # Start port forwarding
 ```
 
-**Access**: http://localhost:8080, http://localhost:8081, https://jaeger.softprobe.ai
+**Access**: http://localhost:8080, http://localhost:8081, https://o.softprobe.ai
 
 ### Production Deployment
 
@@ -133,14 +133,64 @@ cargo build --target wasm32-unknown-unknown --release
 ### Prerequisites
 
 - Rust toolchain with `wasm32-unknown-unknown` target
+- Protocol Buffers compiler (`protobuf-compiler`)
 - Envoy (for local testing)
 - kubectl and Istio (for deployment)
 
-### Adding the WASM Target
+### Setup Development Environment
 
 ```bash
+# Install Rust WASM target
 rustup target add wasm32-unknown-unknown
+
+# Install Protocol Buffers compiler
+# On Debian/Ubuntu:
+sudo apt-get install protobuf-compiler
+
+# On macOS:
+brew install protobuf
+
+# On other systems, download from:
+# https://github.com/protocolbuffers/protobuf/releases
 ```
+
+## CI/CD Pipeline
+
+This project includes automated GitHub Actions workflows:
+
+### Integration Tests
+- **Trigger**: Push to main/bill/deploy branches, Pull Requests
+- **Workflow**: `.github/workflows/integration-test.yml`
+- **Actions**: 
+  - Builds WASM binary
+  - Runs integration tests with Softprobe backend
+  - Validates end-to-end telemetry pipeline
+
+### Release Process
+- **Trigger**: Git tags with format `v*.*.*` (e.g., `v1.2.3`)
+- **Workflow**: `.github/workflows/release.yml`
+- **Actions**:
+  - Updates `Cargo.toml` version from tag
+  - Builds and tests WASM binary
+  - Publishes Docker images to `softprobe/sp-istio-wasm` and `softprobe/sp-envoy`
+  - Creates GitHub release with WASM binary and deployment files
+
+#### Required GitHub Secrets for Release
+- `DOCKERHUB_USERNAME`: Docker Hub username
+- `DOCKERHUB_TOKEN`: Docker Hub access token
+
+#### Creating a Release
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+The release workflow will automatically:
+1. Extract version from tag
+2. Update Cargo.toml version
+3. Build and test
+4. Publish Docker images 
+5. Create GitHub release with assets
 ## Troubleshooting
 
 ### WASM Loading Issues

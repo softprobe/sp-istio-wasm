@@ -1,0 +1,202 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  CARGO_TERM_COLOR: always
+  REGISTRY: softprobe
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Extract version from tag
+      id: version
+      run: |
+        TAG_NAME=${GITHUB_REF#refs/tags/}
+        VERSION=${TAG_NAME#v}
+        echo "tag=${TAG_NAME}" >> $GITHUB_OUTPUT
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "Tag: $TAG_NAME, Version: $VERSION"
+
+    - name: Update Cargo.toml version
+      run: |
+        sed -i "s/^version = .*/version = \"${{ steps.version.outputs.version }}\"/" Cargo.toml
+        echo "Updated Cargo.toml version to ${{ steps.version.outputs.version }}"
+        grep "^version = " Cargo.toml
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: wasm32-unknown-unknown
+
+    - name: Cache Rust dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-release-
+          ${{ runner.os }}-cargo-
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y curl jq protobuf-compiler
+
+    - name: Check dependencies
+      run: make check-deps
+
+    - name: Build WASM binary
+      run: make build
+
+    - name: Verify test configuration exists
+      run: |
+        if [ ! -f test/envoy.yaml ]; then
+          echo "Error: test/envoy.yaml not found"
+          exit 1
+        fi
+        echo "✓ test/envoy.yaml found"
+
+    - name: Run integration tests
+      run: make integration-test
+      env:
+        DOCKER_BUILDKIT: 1
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build and push Docker images
+      run: |
+        # Override VERSION from Makefile to use our extracted version
+        export VERSION=${{ steps.version.outputs.tag }}
+        echo "Building Docker images with version: $VERSION"
+        
+        # Build images
+        make docker-build
+        
+        # Also tag as latest for releases
+        docker tag ${REGISTRY}/sp-istio-wasm:$VERSION ${REGISTRY}/sp-istio-wasm:latest
+        docker tag ${REGISTRY}/sp-envoy:$VERSION ${REGISTRY}/sp-envoy:latest
+        
+        # Push all tags
+        docker push ${REGISTRY}/sp-istio-wasm:$VERSION
+        docker push ${REGISTRY}/sp-istio-wasm:latest
+        docker push ${REGISTRY}/sp-envoy:$VERSION
+        docker push ${REGISTRY}/sp-envoy:latest
+
+    - name: Generate release notes
+      id: release_notes
+      run: |
+        cat > release_notes.md << 'EOF'
+        ## SP-Istio Agent Release ${{ steps.version.outputs.tag }}
+        
+        ### What's Changed
+        
+        This release includes the SP-Istio transparent cache WASM extension for Istio.
+        
+        ### Docker Images
+        
+        - `softprobe/sp-istio-wasm:${{ steps.version.outputs.tag }}`
+        - `softprobe/sp-envoy:${{ steps.version.outputs.tag }}`
+        
+        ### WASM Binary
+        
+        The WASM binary is attached to this release and can be used directly with Envoy or Istio.
+        
+        **SHA256:** `$(cat target/wasm32-unknown-unknown/release/sp_istio_agent.wasm.sha256)`
+        
+        ### Deployment
+        
+        Update your `WasmPlugin` configuration to use this version:
+        
+        ```yaml
+        apiVersion: extensions.istio.io/v1alpha1
+        kind: WasmPlugin
+        metadata:
+          name: sp-istio-agent
+          namespace: istio-system
+        spec:
+          url: https://github.com/your-org/sp-istio/releases/download/${{ steps.version.outputs.tag }}/sp_istio_agent.wasm
+          sha256: $(cat target/wasm32-unknown-unknown/release/sp_istio_agent.wasm.sha256)
+        ```
+        
+        ### Integration Test Results
+        
+        ✅ All integration tests passed  
+        ✅ End-to-end telemetry pipeline validated  
+        ✅ Softprobe backend connectivity verified  
+        
+        EOF
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.version.outputs.tag }}
+        name: Release ${{ steps.version.outputs.tag }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: false
+        files: |
+          target/wasm32-unknown-unknown/release/sp_istio_agent.wasm
+          target/wasm32-unknown-unknown/release/sp_istio_agent.wasm.sha256
+          deploy/minimal.yaml
+          deploy/production.yaml
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Update deployment configs with release version
+      run: |
+        # Update SHA256 in deployment files for the release
+        HASH=$(cat target/wasm32-unknown-unknown/release/sp_istio_agent.wasm.sha256)
+        
+        # Update minimal.yaml
+        if [ -f deploy/minimal.yaml ]; then
+          sed -i "s|url: .*|url: https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/sp_istio_agent.wasm|" deploy/minimal.yaml
+          sed -i "s/sha256: .*/sha256: $HASH/" deploy/minimal.yaml
+          echo "✓ Updated deploy/minimal.yaml"
+        fi
+        
+        # Update production.yaml  
+        if [ -f deploy/production.yaml ]; then
+          sed -i "s|url: .*|url: https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/sp_istio_agent.wasm|" deploy/production.yaml
+          sed -i "s/sha256: .*/sha256: $HASH/" deploy/production.yaml
+          echo "✓ Updated deploy/production.yaml"
+        fi
+
+    - name: Summary
+      run: |
+        echo "🎉 Release ${{ steps.version.outputs.tag }} completed successfully!"
+        echo ""
+        echo "📦 Docker Images Published:"
+        echo "  - softprobe/sp-istio-wasm:${{ steps.version.outputs.tag }}"
+        echo "  - softprobe/sp-istio-wasm:latest"
+        echo "  - softprobe/sp-envoy:${{ steps.version.outputs.tag }}"
+        echo "  - softprobe/sp-envoy:latest"
+        echo ""
+        echo "📋 Release Assets:"
+        echo "  - sp_istio_agent.wasm"
+        echo "  - sp_istio_agent.wasm.sha256"
+        echo "  - deploy/minimal.yaml"
+        echo "  - deploy/production.yaml"
+        echo ""
+        echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}"

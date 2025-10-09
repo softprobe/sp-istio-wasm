@@ -39,7 +39,7 @@ cp deploy/minimal.yaml "$temp_config"
 if [ -n "$api_key" ]; then
     echo "🔧 设置 API Key..."
     # 使用 sed 替换 api_key 的值
-    sed -i.bak "s/api_key: \"\"/api_key: \"$api_key\"/" "$temp_config"
+    sed -i "" "s/api_key: \"\"/api_key: \"$api_key\"/" "$temp_config"
     echo "✅ API Key 已设置"
 else
     echo "⚠️  未设置 API Key，将使用默认空值"
@@ -56,7 +56,7 @@ kubectl apply -f "$temp_config"
 echo "✅ SP Istio Agent WASM 插件已安装"
 
 # 清理临时文件
-rm -f "$temp_config" "$temp_config.bak"
+rm -f "$temp_config"
 
 # 等待插件生效
 echo "⏳ 等待 WASM 插件生效..."
@@ -79,8 +79,8 @@ echo "📋 下一步操作："
 echo "1. 运行 ./scripts/start-port-forwarding.sh 启动端口转发"
 echo "2. 访问 http://localhost:8080/ 测试 demo-ota 应用"
 echo "3. 访问 http://localhost:8081/ 测试 demo-airline 应用"
-echo "4. 访问 https://jaeger.softprobe.ai 查看 Jaeger 追踪"
+echo "4. 访问 https://o.softprobe.ai 查看 Softprobe 追踪"
 echo ""
 echo "💡 提示："
-echo "- WASM 插件会拦截所有 HTTP 请求并发送追踪数据到 Jaeger"
-echo "- 在 Jaeger UI 中可以看到详细的请求追踪信息"
+echo "- WASM 插件会拦截所有 HTTP 请求并发送追踪数据到 Softprobe"
+echo "- 在 Softprobe UI 中可以看到详细的请求追踪信息"

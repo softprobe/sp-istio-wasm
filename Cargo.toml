@@ -23,7 +23,7 @@ base64 = "0.22"
 prost = "0.12"
 log = "0.4"
 url = "2.5"
-regex = "1.5"  # 添加这一行
+regex = "1.5"
 
 [build-dependencies]
 prost-build = "0.12"

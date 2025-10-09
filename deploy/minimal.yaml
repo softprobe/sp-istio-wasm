@@ -6,13 +6,12 @@ metadata:
   name: sp-istio-agent-server
   namespace: istio-system
 spec:
-  url: oci://docker.io/softprobe/sp-istio-wasm:v1.2.5
-  sha256: 824405f7bd9b6e97c9762d3056e8de7ddb606497ae213dae53284434949fc33e
+  url: oci://docker.io/softprobe/sp-istio-wasm:v0.1.3
   phase: AUTHN
   match:
     - mode: SERVER
   pluginConfig:
-    sp_backend_url: "https://jaeger.softprobe.ai"
+    sp_backend_url: "https://o.softprobe.ai"
     enable_inject: false
     traffic_direction: "server"
     collectionRules:
@@ -36,14 +35,13 @@ metadata:
   name: sp-istio-agent-client
   namespace: istio-system
 spec:
-  url: oci://docker.io/softprobe/sp-istio-wasm:v1.2.5
-  sha256: 824405f7bd9b6e97c9762d3056e8de7ddb606497ae213dae53284434949fc33e
+  url: oci://docker.io/softprobe/sp-istio-wasm:v0.1.3
   phase: AUTHN
   match:
     - mode: CLIENT
   pluginConfig:
     api_key: "demo-ota-01"
-    sp_backend_url: "https://jaeger.softprobe.ai"
+    sp_backend_url: "https://o.softprobe.ai"
     enable_inject: false
     traffic_direction: "client"
     collectionRules:
@@ -67,7 +65,7 @@ metadata:
   namespace: istio-system
 spec:
   hosts:
-  - jaeger.softprobe.ai
+  - o.softprobe.ai
   ports:
   - number: 443
     name: https
@@ -84,11 +82,11 @@ metadata:
   name: softprobe-backend-tls
   namespace: istio-system
 spec:
-  host: jaeger.softprobe.ai
+  host: o.softprobe.ai
   trafficPolicy:
     tls:
       mode: SIMPLE
-      sni: jaeger.softprobe.ai
+      sni: o.softprobe.ai
 ---
 # EnvoyFilter - 自动注入应用名header（应用到所有工作负载）
 apiVersion: networking.istio.io/v1alpha3

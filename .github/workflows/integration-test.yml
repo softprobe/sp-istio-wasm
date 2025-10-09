@@ -1,0 +1,78 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [ main, bill/deploy ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: wasm32-unknown-unknown
+
+    - name: Cache Rust dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y curl jq protobuf-compiler
+
+    - name: Check dependencies
+      run: make check-deps
+
+    - name: Verify test configuration exists
+      run: |
+        if [ ! -f test/envoy.yaml ]; then
+          echo "Error: test/envoy.yaml not found"
+          exit 1
+        fi
+        echo "✓ test/envoy.yaml found"
+
+    - name: Run integration tests
+      run: make integration-test
+      env:
+        # Ensure Docker daemon is available
+        DOCKER_BUILDKIT: 1
+
+    - name: Upload test artifacts on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-artifacts
+        path: |
+          target/wasm32-unknown-unknown/release/sp_istio_agent.wasm
+          target/wasm32-unknown-unknown/release/sp_istio_agent.wasm.sha256
+          test/
+        retention-days: 7
+
+    - name: Display logs on failure
+      if: failure()
+      run: |
+        echo "=== Docker containers ==="
+        docker ps -a || true
+        echo "=== Container logs ==="
+        docker logs sp-envoy-test 2>&1 || true
+        echo "=== WASM file info ==="
+        ls -la target/wasm32-unknown-unknown/release/ || true

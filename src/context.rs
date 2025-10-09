@@ -330,12 +330,12 @@ impl Context for SpHttpContext {
 impl HttpContext for SpHttpContext {
     fn on_http_request_headers(&mut self, _num_headers: usize, end_of_stream: bool) -> Action {
         let traffic_direction = crate::traffic::TrafficAnalyzer::detect_traffic_direction(self);
-        log::error!("\nSP: *** {} REQUEST HEADERS CALLBACK INVOKED ***", traffic_direction);
+        log::debug!("\nSP: {} request headers callback invoked", traffic_direction);
         
         // Get initial request headers
         let mut initial_headers = HashMap::new();
         for (key, value) in self.get_http_request_headers() {
-            log::error!("SP: on_http_request_headers Request: {}: {}", key, value);
+            log::debug!("SP: on_http_request_headers Request: {}: {}", key, value);
             initial_headers.insert(key, value);
         }
 
@@ -347,7 +347,7 @@ impl HttpContext for SpHttpContext {
         
         // Check if from istio-ingressgateway, skip if so
         if self.is_from_ingressgateway {
-            log::error!("SP: Skipping processing for traffic from istio-ingressgateway");
+            log::debug!("SP: Skipping processing for traffic from istio-ingressgateway");
             return Action::Continue;
         }
 
@@ -412,7 +412,7 @@ impl HttpContext for SpHttpContext {
     }
 
     fn on_http_response_headers(&mut self, num_headers: usize, end_of_stream: bool) -> Action {
-        log::error!("SP: on_http_response_headers called - num_headers: {}, end_of_stream: {}", num_headers, end_of_stream);
+        log::debug!("SP: on_http_response_headers called - num_headers: {}, end_of_stream: {}", num_headers, end_of_stream);
         
         if self.is_from_ingressgateway || self.injected {
             return Action::Continue;
@@ -420,7 +420,7 @@ impl HttpContext for SpHttpContext {
 
         // Skip header processing if no headers are expected
         if num_headers == 0 {
-            log::error!("SP: No response headers to process, skipping header capture");
+            log::debug!("SP: No response headers to process, skipping header capture");
             return Action::Continue;
         }
 
@@ -450,7 +450,7 @@ impl HttpContext for SpHttpContext {
                 log::info!("SP: Processing response (status: {})", status);
                 match self.dispatch_async_extraction_save() {
                     Ok(()) => {
-                        log::error!("SP: Async extraction save dispatched successfully");
+                        log::info!("SP: Async extraction save dispatched successfully");
                     }
                     Err(e) => {
                         log::error!("SP: Failed to store agent: {}", e);

@@ -12,6 +12,8 @@ HASH_FILE := $(WASM_FILE).sha256
 REGISTRY := softprobe
 WASM_IMAGE := $(REGISTRY)/sp-istio-wasm
 ENVOY_IMAGE := $(REGISTRY)/sp-envoy
+# Auto-extract version from Cargo.toml
+VERSION := $(shell grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/v\1/')
 VERSION ?= latest
 
 # Colors for output
@@ -41,6 +43,8 @@ endef
 help: ## Show this help message
 	@echo "SP-Istio Agent Build System"
 	@echo "=========================="
+	@echo ""
+	@echo "Current version: $(VERSION)"
 	@echo ""
 	@echo "Available targets:"
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ { printf "  %-15s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -90,11 +94,11 @@ update-configs: ## Update deployment configs with new WASM hash
 	@if [ -f "$(HASH_FILE)" ]; then \
 		HASH=$$(cat $(HASH_FILE)); \
 		if [ -f "deploy/minimal.yaml" ]; then \
-			sed -i.bak "s/sha256: .*/sha256: $$HASH/" deploy/minimal.yaml; \
+			sed -i "" "s/sha256: .*/sha256: $$HASH/" deploy/minimal.yaml; \
 			echo "$(GREEN)✅ Updated deploy/minimal.yaml$(RESET)"; \
 		fi; \
 		if [ -f "deploy/production.yaml" ]; then \
-			sed -i.bak "s/sha256: .*/sha256: $$HASH/" deploy/production.yaml; \
+			sed -i "" "s/sha256: .*/sha256: $$HASH/" deploy/production.yaml; \
 			echo "$(GREEN)✅ Updated deploy/production.yaml$(RESET)"; \
 		fi; \
 	else \
@@ -110,17 +114,13 @@ integration-test: build ## Run comprehensive integration test with Softprobe bac
 	$(call print_info,"Running integration test with Softprobe backend...")
 	@./scripts/integration-test.sh
 
-docker-build: build ## Build Docker images (requires VERSION)
-	@if [ -z "$(VERSION)" ] || [ "$(VERSION)" = "latest" ]; then \
-		echo "$(RED)❌ VERSION required. Usage: make docker-build VERSION=v1.0.0$(RESET)"; \
-		exit 1; \
-	fi
+docker-build: build ## Build Docker images (auto-versioned from Cargo.toml)
 	$(call print_info,"Building Docker images for version $(VERSION)...")
 	@docker build -t $(WASM_IMAGE):$(VERSION) -f Dockerfile .
 	@docker build -t $(ENVOY_IMAGE):$(VERSION) -f Dockerfile.envoy .
 	$(call print_success,"Docker images built")
 
-docker-push: docker-build ## Build and push Docker images (requires VERSION)
+docker-push: docker-build ## Build and push Docker images (auto-versioned from Cargo.toml)
 	$(call print_info,"Pushing images to registry...")
 	@docker push $(WASM_IMAGE):$(VERSION)
 	@docker push $(ENVOY_IMAGE):$(VERSION)
@@ -163,7 +163,10 @@ cleanup: ## Clean up development environment
 dev-setup: cluster-setup deploy-demo install-plugin start-forwarding ## Complete development setup
 	$(call print_success,"Development environment ready!")
 	$(call print_info,"Demo apps: http://localhost:8080 and http://localhost:8081")
-	$(call print_info,"Jaeger UI: https://jaeger.softprobe.ai")
+	$(call print_info,"Softprobe UI: https://o.softprobe.ai")
+
+version: ## Show current version from Cargo.toml
+	@echo "$(GREEN)Current version: $(VERSION)$(RESET)"
 
 status: ## Check deployment status
 	$(call print_info,"Checking deployment status...")
@@ -174,9 +177,9 @@ logs: ## View plugin logs
 	$(call print_info,"Viewing plugin logs...")
 	@POD=$$(kubectl get pod -l app=demo-ota -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
 	if [ -n "$$POD" ]; then \
-		kubectl logs $$POD -c istio-proxy | grep "SP" || $(call print_warning,"No SP logs found"); \
+		kubectl logs $$POD -c istio-proxy | grep "SP" || echo "$(YELLOW)⚠️  No SP logs found$(RESET)"; \
 	else \
-		$(call print_warning,"No demo pods found"); \
+		echo "$(YELLOW)⚠️  No demo pods found$(RESET)"; \
 	fi
 
 # Convenience aliases

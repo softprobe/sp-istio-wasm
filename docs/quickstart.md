@@ -17,7 +17,7 @@ Get SP-Istio Agent running with a complete demo environment in under 10 minutes.
 ```bash
 ./scripts/cluster-setup.sh
 ```
-**Creates**: Kind cluster, Istio service mesh, Jaeger tracing, OpenTelemetry Operator
+**Creates**: Kind cluster, Istio service mesh, Softprobe tracing, OpenTelemetry Operator
 
 ### Step 2: Deploy Demo Applications  
 ```bash
@@ -35,14 +35,14 @@ Get SP-Istio Agent running with a complete demo environment in under 10 minutes.
 ```bash
 ./scripts/start-port-forwarding.sh
 ```
-**Enables**: Local access to cluster applications and Jaeger UI
+**Enables**: Local access to cluster applications and Softprobe UI
 
 ## 🎯 Test the Setup
 
 ### Access Applications
 - **demo-ota Application**: http://localhost:8080/
 - **demo-airline Application**: http://localhost:8081/
-- **Jaeger Tracing UI**: https://jaeger.softprobe.ai/
+- **Softprobe Tracing UI**: https://o.softprobe.ai/
 
 ### Send Test Requests
 ```bash
@@ -63,7 +63,7 @@ curl http://localhost:8081/api/flights
 ```
 
 ### View Enhanced Tracing
-1. Visit https://jaeger.softprobe.ai/
+1. Visit https://o.softprobe.ai/
 2. Select `demo-ota` or `demo-airline` from Service dropdown
 3. Click "Find Traces" to see enhanced service mesh tracing
 

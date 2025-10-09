@@ -12,7 +12,7 @@ services:
       - HTTPS_PROXY=http://envoy-dict-app:15001
       - http_proxy=http://envoy-dict-app:15001
       - https_proxy=http://envoy-dict-app:15001
-      - OTEL_EXPORTER_OTLP_ENDPOINT=https://jaeger.softprobe.ai
+      - OTEL_EXPORTER_OTLP_ENDPOINT=https://o.softprobe.ai
     ports:
       - "8080:8080"
   demo-airline:
@@ -28,7 +28,7 @@ services:
       - HTTPS_PROXY=http://envoy-dict-app:15001
       - http_proxy=http://envoy-dict-app:15001
       - https_proxy=http://envoy-dict-app:15001
-      - OTEL_EXPORTER_OTLP_ENDPOINT=https://jaeger.softprobe.ai
+      - OTEL_EXPORTER_OTLP_ENDPOINT=https://o.softprobe.ai
 
   envoy-dict-app:
     image: envoyproxy/envoy:v1.27-latest

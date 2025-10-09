@@ -36,7 +36,7 @@ See [docs/quickstart.md](docs/quickstart.md) for complete setup instructions.
 ./scripts/start-port-forwarding.sh # Start port forwarding
 ```
 
-**Access**: http://localhost:8080, http://localhost:8081, https://jaeger.softprobe.ai
+**Access**: http://localhost:8080, http://localhost:8081, https://o.softprobe.ai
 
 ### Production Deployment
 

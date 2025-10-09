@@ -51,11 +51,11 @@ update_configs() {
     print_status "Updating configs with SHA256: $HASH"
     
     # Update WasmPlugin
-    sed -i.bak "s/sha256: .*/sha256: $HASH/" istio-configs/wasmplugin.yaml
+    sed -i "" "s/sha256: .*/sha256: $HASH/" istio-configs/wasmplugin.yaml
     print_success "Updated wasmplugin.yaml"
     
     # Update EnvoyFilter
-    sed -i.bak "s/sha256: .*/sha256: $HASH/" istio-configs/envoyfilter.yaml
+    sed -i "" "s/sha256: .*/sha256: $HASH/" istio-configs/envoyfilter.yaml
     print_success "Updated envoyfilter.yaml"
 }
 

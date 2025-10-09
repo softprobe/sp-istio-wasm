@@ -4,6 +4,8 @@ metadata:
   name: default-instrumentation
   namespace: default
 spec:
+  exporter:
+    endpoint: https://o.softprobe.ai
   propagators:
     - tracecontext
     - baggage

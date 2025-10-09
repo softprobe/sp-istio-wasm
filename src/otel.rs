@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 // Note: SystemTime is not available in WASM runtime, will use proxy-wasm host functions
 use prost::Message;
-use serde::{Serialize, Deserialize};
 use proxy_wasm;
 // use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -503,60 +502,6 @@ impl SpanBuilder {
 
     }
 
-// 简化的JSON结构用于序列化
-#[derive(Serialize, Deserialize, Debug)]
-pub struct JsonTracesData {
-    pub resource_spans: Vec<JsonResourceSpans>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct JsonResourceSpans {
-    pub resource: JsonResource,
-    pub scope_spans: Vec<JsonScopeSpans>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct JsonResource {
-    pub attributes: Vec<JsonKeyValue>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct JsonScopeSpans {
-    pub spans: Vec<JsonSpan>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct JsonSpan {
-    pub trace_id: String,
-    pub span_id: String,
-    pub parent_span_id: Option<String>,
-    pub name: String,
-    pub kind: i32,
-    pub start_time_unix_nano: u64,
-    pub end_time_unix_nano: u64,
-    pub attributes: Vec<JsonKeyValue>,
-    pub status: JsonStatus,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct JsonKeyValue {
-    pub key: String,
-    pub value: JsonAnyValue,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct JsonAnyValue {
-    pub string_value: Option<String>,
-    pub int_value: Option<i64>,
-    pub double_value: Option<f64>,
-    pub bool_value: Option<bool>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct JsonStatus {
-    pub code: i32,
-    pub message: String,
-}
 
 // 保留原有的protobuf序列化函数
 pub fn serialize_traces_data(traces_data: &TracesData) -> Result<Vec<u8>, prost::EncodeError> {

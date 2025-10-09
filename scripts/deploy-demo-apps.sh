@@ -25,10 +25,10 @@ echo "✅ OpenTelemetry Operator is ready"
 
 # Deploy applications
 echo "📦 Deploying demo applications (demo-ota and demo-airline with OpenTelemetry auto-injection)..."
-kubectl apply -f ../deploy/demo-apps-deployment.yaml
+kubectl apply -f deploy/demo-apps-deployment.yaml
 
 echo "🌐 Deploying Istio Gateway and VirtualService..."
-kubectl apply -f ../deploy/demo-istio-gateway.yaml
+kubectl apply -f deploy/demo-istio-gateway.yaml
 
 # Wait for deployment to be ready
 echo "⏳ Waiting for application deployment to be ready..."

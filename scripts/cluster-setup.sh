@@ -76,7 +76,7 @@ fi
 
 # 6. Apply OpenTelemetry auto-instrumentation configuration
 echo "📊 Applying OpenTelemetry auto-instrumentation configuration..."
-kubectl apply -f ../deploy/examples/auto-instrumentation.yaml
+kubectl apply -f deploy/examples/auto-instrumentation.yaml
 
 # Wait for configuration processing
 echo "⏳ Waiting for configuration processing..."

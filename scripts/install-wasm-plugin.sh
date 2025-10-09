@@ -33,7 +33,7 @@ read -p "API Key: " api_key
 
 # Create temporary configuration file
 temp_config=$(mktemp)
-cp ../deploy/minimal.yaml "$temp_config"
+cp deploy/minimal.yaml "$temp_config"
 
 # If user entered API Key, update configuration file
 if [ -n "$api_key" ]; then

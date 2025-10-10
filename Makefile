@@ -112,7 +112,8 @@ test: build ## Run local tests with Envoy
 
 integration-test: build ## Run comprehensive integration test with Softprobe backend verification
 	$(call print_info,"Running integration test with Softprobe backend...")
-	@./scripts/integration-test.sh
+	@docker compose -f test/docker-compose.yml up --build --abort-on-container-exit
+
 
 docker-build: build ## Build Docker images (auto-versioned from Cargo.toml)
 	$(call print_info,"Building Docker images for version $(VERSION)...")
@@ -181,6 +182,10 @@ logs: ## View plugin logs
 	else \
 		echo "$(YELLOW)⚠️  No demo pods found$(RESET)"; \
 	fi
+
+test-logs: ## View logs from test containers
+	$(call print_info,"Viewing test container logs...")
+	@docker compose -f test/docker-compose.yml logs --tail=50
 
 # Convenience aliases
 all: build ## Build everything

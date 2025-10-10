@@ -1,51 +1,41 @@
-version: '3.8'
-
 services:
-  demo-ota:
-    image: gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/demo-ota:v1.2.1
-    networks:
-      - service-network
-      - otel-network
-    environment:
-      # 显式配置代理 
-      - HTTP_PROXY=http://envoy-dict-app:15001
-      - HTTPS_PROXY=http://envoy-dict-app:15001
-      - http_proxy=http://envoy-dict-app:15001
-      - https_proxy=http://envoy-dict-app:15001
-      - OTEL_EXPORTER_OTLP_ENDPOINT=https://o.softprobe.ai
-    ports:
-      - "8080:8080"
-  demo-airline:
-    image: gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/demo-airline:v0.0.3
-    networks:
-      - service-network
-      - otel-network
-    ports:
-      - "8081:8081"
-    environment:
-      # 显式配置代理 
-      - HTTP_PROXY=http://envoy-dict-app:15001
-      - HTTPS_PROXY=http://envoy-dict-app:15001
-      - http_proxy=http://envoy-dict-app:15001
-      - https_proxy=http://envoy-dict-app:15001
-      - OTEL_EXPORTER_OTLP_ENDPOINT=https://o.softprobe.ai
-
-  envoy-dict-app:
+  envoy:
     image: envoyproxy/envoy:v1.27-latest
     command: ["/usr/local/bin/envoy", "-c", "/etc/envoy/envoy.yaml", "--log-level", "info"]
     volumes:
       - ./envoy.yaml:/etc/envoy/envoy.yaml
       - ../target/wasm32-unknown-unknown/release/sp_istio_agent.wasm:/etc/envoy/sp_istio_agent.wasm
-    networks:
-      - service-network
-      - otel-network
+    restart: always
     ports:
-      - "15001:15001" # 出站流量
-      - "15006:15006" # 入站流量
+      - "15001:15001" # outbound traffic
+      - "15006:15006" # inbound traffic
+      - "18001:18001" # admin interface
 
+  go-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      no_cache: true
+    environment:
+      - ENVOY_HOST=envoy:15001
+      - HTTP_PROXY=http://envoy:15001
+      - http_proxy=http://envoy:15001
+      # - OTEL_EXPORTER_OTLP_ENDPOINT=https://o.softprobe.ai
+    restart: always
+    ports:
+      - "8080:80"
 
-networks:
-  service-network:
-    driver: bridge
-  otel-network:
-    driver: bridge
+  test-runner:
+    image: golang:1.23-alpine
+    working_dir: /workspace/test
+    volumes:
+      - ..:/workspace
+    command: ["sh", "-c", "sleep 2 && go run test.go"]
+    environment:
+      - ENVOY_HOST=envoy
+      - BACKEND_URL=https://o.softprobe.ai
+      - SERVICE_NAME=sp-istio-wasm-integration-test
+    restart: always
+    depends_on:
+      - envoy
+      - go-app

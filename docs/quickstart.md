@@ -41,8 +41,7 @@ Get SP-Istio Agent running with a complete demo environment in under 10 minutes.
 
 ### Access Applications
 - **demo-ota Application**: http://localhost:8080/
-- **demo-airline Application**: http://localhost:8081/
-- **Softprobe Tracing UI**: https://o.softprobe.ai/
+- **Softprobe Tracing UI**: https://dashboard.softprobe.ai/traceView
 
 ### Send Test Requests
 ```bash
@@ -63,9 +62,9 @@ curl http://localhost:8081/api/flights
 ```
 
 ### View Enhanced Tracing
-1. Visit https://o.softprobe.ai/
-2. Select `demo-ota` or `demo-airline` from Service dropdown
-3. Click "Find Traces" to see enhanced service mesh tracing
+1. Visit https://dashboard.softprobe.ai/traceView
+2. Select `demo-ota` from Service dropdown
+3. Click "Search" to see enhanced service mesh tracing
 
 ## 🔍 Verify Plugin is Working
 

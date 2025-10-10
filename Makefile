@@ -116,7 +116,8 @@ integration-test: build ## Run comprehensive integration test with Softprobe bac
 
 docker-build: build ## Build Docker images (auto-versioned from Cargo.toml)
 	$(call print_info,"Building Docker images for version $(VERSION)...")
-	@docker build -t $(WASM_IMAGE):$(VERSION) -f Dockerfile .
+	@HASH=$$(cat $(HASH_FILE)); \
+	docker build --build-arg WASM_SHA256=$$HASH -t $(WASM_IMAGE):$(VERSION) -f Dockerfile .
 	@docker build -t $(ENVOY_IMAGE):$(VERSION) -f Dockerfile.envoy .
 	$(call print_success,"Docker images built")
 

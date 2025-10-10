@@ -1,6 +1,6 @@
 static_resources:
   listeners:
-    # 入站流量监听器 (处理发往本服务的请求)
+    # incoming traffic proxy
     - name: inbound_listener
       address:
         socket_address:
@@ -13,6 +13,10 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                 stat_prefix: inbound_http
                 codec_type: AUTO
+                access_log:
+                  - name: envoy.access_loggers.stdout
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
                 route_config:
                   name: inbound_route
                   virtual_hosts:
@@ -22,7 +26,7 @@ static_resources:
                         - match:
                             prefix: "/"
                           route:
-                            cluster: httpbin_cluster
+                            cluster: go-app
                 http_filters:
                   - name: envoy.filters.http.wasm
                     typed_config:
@@ -40,15 +44,14 @@ static_resources:
                           "@type": type.googleapis.com/google.protobuf.StringValue
                           value: |
                             {
-                              "traffic_direction": "outbound",
-                              "service_name": "sp-travel-ota",
+                              "traffic_direction": "inbound",
+                              "service_name": "sp-istio-wasm-integration-test",
                               "sp_backend_url": "https://o.softprobe.ai",
                               "api_key": "test123",
                               "enable_inject": false,
                               "collectionRules": {
                                 "http": {
-                                  "server": [],
-                                  "client": [
+                                  "server": [
                                     {
                                       "host": ".*",
                                       "paths": [".*"]
@@ -62,7 +65,7 @@ static_resources:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
                       suppress_envoy_headers: false
 
-    # 出站流量监听器 (处理本服务发起的请求)
+    # outgoing http proxy
     - name: outbound_listener
       address:
         socket_address:
@@ -75,6 +78,9 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                 stat_prefix: outbound_http
                 codec_type: AUTO
+                http_protocol_options:
+                  accept_http_10: true # this is important for http/1.0 to be accepted
+                use_remote_address: true
                 route_config:
                   name: outbound_route
                   virtual_hosts:
@@ -103,7 +109,7 @@ static_resources:
                           value: |
                             {
                               "traffic_direction": "outbound",
-                              "service_name": "sp-travel-ota",
+                              "service_name": "sp-istio-wasm-integration-test",
                               "sp_backend_url": "https://o.softprobe.ai",
                               "api_key": "test123",
                               "enable_inject": false,
@@ -130,22 +136,23 @@ static_resources:
       lb_policy: CLUSTER_PROVIDED
       connect_timeout: 10s
 
-    - name: httpbin_cluster
+    - name: go-app
       type: LOGICAL_DNS
       dns_lookup_family: V4_ONLY
       lb_policy: ROUND_ROBIN
+      connect_timeout: 5s
       load_assignment:
-        cluster_name: httpbin_cluster
+        cluster_name: go-app
         endpoints:
           - lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
-                      address: mock-server
+                      address: go-app
                       port_value: 80
 
 
-    - name: sp_backend
+    - name: httpbin_cluster
       type: LOGICAL_DNS
       dns_lookup_family: V4_ONLY
       lb_policy: ROUND_ROBIN
@@ -155,13 +162,13 @@ static_resources:
           "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
           sni: o.softprobe.ai
       load_assignment:
-        cluster_name: sp_backend
+        cluster_name: httpbin_cluster
         endpoints:
           - lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
-                      address: o.softprobe.ai
+                      address: httpbin.org
                       port_value: 443
 
     # Cluster with name format expected by WASM plugin

@@ -218,7 +218,7 @@ impl SpHttpContext {
 
         // Check response headers for traceparent
         if let Some(traceparent) = self.response_headers.get("traceparent") {
-            log::error!("SP: Found traceparent in response: {}", traceparent);
+            log::info!("SP: Found traceparent in response: {}", traceparent);
             self.propagate_trace_context_to_response();
         }
     }
@@ -263,7 +263,7 @@ impl Context for SpHttpContext {
         let status_code = self
             .get_http_call_response_header(":status")
             .and_then(|s| s.parse::<u32>().ok())
-            .unwrap_or(500);
+            .unwrap_or(0);
 
         // Get response body
         let response_body = if body_size > 0 {
@@ -420,7 +420,7 @@ impl HttpContext for SpHttpContext {
     }
 
     fn on_http_response_headers(&mut self, num_headers: usize, end_of_stream: bool) -> Action {
-        log::debug!("SP: on_http_response_headers called - num_headers: {}, end_of_stream: {}", num_headers, end_of_stream);
+        log::debug!("SP: proxied response headers - num_headers: {}, end_of_stream: {}", num_headers, end_of_stream);
         
         if self.is_from_ingressgateway || self.injected {
             return Action::Continue;
@@ -444,6 +444,8 @@ impl HttpContext for SpHttpContext {
     }
 
     fn on_http_response_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
+        log::debug!("SP: proxied response body - body_size: {}, end_of_stream: {}", body_size, end_of_stream);
+
         if self.is_from_ingressgateway || self.injected {
             return Action::Continue;
         }

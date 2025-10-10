@@ -285,6 +285,7 @@ impl SpanBuilder {
         response_body: &[u8],
         url_host: Option<&str>,
         url_path: Option<&str>,
+        request_start_time: Option<u64>,  // Add request start time parameter
     ) -> TracesData {
         let span_id = self.current_span_id.clone();
         let mut attributes = Vec::new();
@@ -444,7 +445,7 @@ impl SpanBuilder {
             parent_span_id: self.parent_span_id.clone().unwrap_or_default(),
             name: url_path.unwrap_or("unknown_path").to_string(),
             kind: span::SpanKind::Server as i32,
-            start_time_unix_nano: get_current_timestamp_nanos(),
+            start_time_unix_nano: request_start_time.unwrap_or_else(|| get_current_timestamp_nanos()),
             end_time_unix_nano: get_current_timestamp_nanos(),
             attributes,
             status: Some(Status {
@@ -568,7 +569,7 @@ fn hex_decode(hex: &str) -> Option<Vec<u8>> {
     Some(result)
 }
 
-fn get_current_timestamp_nanos() -> u64 {
+pub fn get_current_timestamp_nanos() -> u64 {
     match proxy_wasm::hostcalls::get_current_time() {
         Ok(system_time) => {
             // Convert SystemTime to nanoseconds

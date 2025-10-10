@@ -23,6 +23,7 @@ pub struct SpHttpContext {
     pub(crate) url_host: Option<String>,
     pub(crate) url_path: Option<String>,
     pub(crate) is_from_ingressgateway: bool,  // Cache to avoid calling get_request_header during response phase
+    pub(crate) request_start_time: Option<u64>,  // Store request start time in nanoseconds
 }
 
 impl SpHttpContext {
@@ -50,6 +51,7 @@ impl SpHttpContext {
             url_host: None,
             url_path: None,
             is_from_ingressgateway: false,  // Initialize to false, will be set during request processing
+            request_start_time: None,  // Initialize to None, will be set when request starts
         }
     }
     // Dispatch injection HTTP call (disabled)
@@ -119,6 +121,7 @@ impl SpHttpContext {
             &self.response_body,
             self.url_host.as_deref(),
             self.url_path.as_deref(),
+            self.request_start_time,  // Pass the stored request start time
         );
 
         // Serialize to protobuf
@@ -329,6 +332,11 @@ impl Context for SpHttpContext {
 
 impl HttpContext for SpHttpContext {
     fn on_http_request_headers(&mut self, _num_headers: usize, end_of_stream: bool) -> Action {
+        // Record request start time as early as possible
+        if self.request_start_time.is_none() {
+            self.request_start_time = Some(crate::otel::get_current_timestamp_nanos());
+        }
+        
         let traffic_direction = crate::traffic::TrafficAnalyzer::detect_traffic_direction(self);
         log::debug!("\nSP: {} request headers callback invoked", traffic_direction);
         

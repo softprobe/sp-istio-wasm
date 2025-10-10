@@ -6,7 +6,7 @@ metadata:
   name: sp-istio-agent-server
   namespace: istio-system
 spec:
-  url: oci://docker.io/softprobe/sp-istio-wasm:v0.1.3
+  url: oci://docker.io/softprobe/sp-istio-wasm:v0.1.4
   phase: AUTHN
   match:
     - mode: SERVER
@@ -35,7 +35,7 @@ metadata:
   name: sp-istio-agent-client
   namespace: istio-system
 spec:
-  url: oci://docker.io/softprobe/sp-istio-wasm:v0.1.3
+  url: oci://docker.io/softprobe/sp-istio-wasm:v0.1.4
   phase: AUTHN
   match:
     - mode: CLIENT

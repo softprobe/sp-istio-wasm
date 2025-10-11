@@ -4,15 +4,12 @@ metadata:
   name: default-instrumentation
   namespace: default
 spec:
-  exporter:
-    endpoint: https://o.softprobe.ai
   propagators:
     - tracecontext
     - baggage
     - b3
   sampler:
-    type: parentbased_traceidratio
-    argument: "1"
+    type: always_off
   # Java auto-instrumentation configuration
   java:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:latest
@@ -33,15 +30,33 @@ spec:
             fieldPath: metadata.uid
       - name: OTEL_RESOURCE_ATTRIBUTES
         value: service.instance.id=$(OTEL_RESOURCE_ATTRIBUTES_POD_NAME),k8s.pod.uid=$(OTEL_RESOURCE_ATTRIBUTES_POD_UID)
+      - name: OTEL_TRACES_SAMPLER
+        value: "always_off"
+      - name: OTEL_METRICS_EXPORTER
+        value: "none"
+      - name: OTEL_LOGS_EXPORTER
+        value: "none"
   # Python auto-instrumentation configuration
   python:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-python:latest
     env:
       - name: OTEL_EXPORTER_OTLP_PROTOCOL
         value: "http/protobuf"
+      - name: OTEL_TRACES_SAMPLER
+        value: "always_off"
+      - name: OTEL_METRICS_EXPORTER
+        value: "none"
+      - name: OTEL_LOGS_EXPORTER
+        value: "none"
   # Node.js auto-instrumentation configuration
   nodejs:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:latest
     env:
       - name: OTEL_EXPORTER_OTLP_PROTOCOL
         value: "http/protobuf"
+      - name: OTEL_TRACES_SAMPLER
+        value: "always_off"
+      - name: OTEL_METRICS_EXPORTER
+        value: "none"
+      - name: OTEL_LOGS_EXPORTER
+        value: "none"

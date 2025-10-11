@@ -61,6 +61,25 @@ https://github.com/user-attachments/assets/dc8c68db-dd8b-4da8-a6e2-346adf6ecffb
 kind delete cluster --name sp-demo-cluster
 ```
 
+## Local Quick Start (Kind + local image, no registry)
+
+Use the Makefile to spin up a local Kind cluster, build the WASM, load the Docker image directly into Kind (no registry push), deploy the plugin, and install the demo app.
+
+```bash
+# 1) Create cluster, build + load local image, deploy plugin and demo app
+make dev-quickstart
+
+# 2) In a separate terminal, expose the demo on http://localhost:8080
+make forward
+
+# 3) (Optional) Check status
+make status
+kubectl get wasmplugin -n istio-system
+
+# 4) Cleanup cluster
+make cluster-down
+```
+
 ## Production Deployment
 
 ```bash

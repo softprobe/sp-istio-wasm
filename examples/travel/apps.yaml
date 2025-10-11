@@ -26,6 +26,9 @@ spec:
         # OpenTelemetry auto-instrumentation for Java
         instrumentation.opentelemetry.io/inject-java: "true"
         sidecar.istio.io/inject: "true"
+        # Set log levels
+        sidecar.istio.io/logLevel: "info"
+        sidecar.istio.io/componentLogLevel: "wasm:debug"
     spec:
       serviceAccountName: default
       securityContext:
@@ -98,6 +101,9 @@ spec:
         # OpenTelemetry auto-instrumentation for Java
         instrumentation.opentelemetry.io/inject-java: "true"
         sidecar.istio.io/inject: "true"
+        # Set log levels
+        sidecar.istio.io/logLevel: "info"
+        sidecar.istio.io/componentLogLevel: "wasm:debug"
     spec:
       serviceAccountName: default
       securityContext:

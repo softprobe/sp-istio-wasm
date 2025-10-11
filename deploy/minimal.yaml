@@ -21,8 +21,6 @@ spec:
           - path: ".*"
   vmConfig:
     env:
-      - name: ENVOY_LOG_LEVEL
-        value: "debug"
       - name: WASM_LOG_LEVEL
         value: "debug"
 ---
@@ -49,8 +47,6 @@ spec:
             paths: [".*"]
   vmConfig:
     env:
-      - name: ENVOY_LOG_LEVEL
-        value: "debug"
       - name: WASM_LOG_LEVEL
         value: "debug"
 ---

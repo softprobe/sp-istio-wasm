@@ -59,6 +59,10 @@ kubectl apply -f deploy/minimal.yaml
 
 Play with the demo travel app by open [`http://localhost:8080/`](http://localhost:8080/) in browser, select a pari of cities and do a search, book and payment (fill any fake information). Then you can go to [Softprobe Dashboard](https://dashboard.softprobe.ai), check `Trave View` on the left navagation menu.
 
+
+https://github.com/user-attachments/assets/dc8c68db-dd8b-4da8-a6e2-346adf6ecffb
+
+
 <video src="docs/assets/traceview.mp4" width="800" height="600" controls>
   Your browser does not support the video tag.
 </video>

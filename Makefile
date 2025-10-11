@@ -106,10 +106,6 @@ update-configs: ## Update deployment configs with new WASM hash
 		exit 1; \
 	fi
 
-test: build ## Run local tests with Envoy
-	$(call print_info,"Running local tests...")
-	@./scripts/test.sh
-
 integration-test: build ## Run comprehensive integration test with Softprobe backend verification
 	$(call print_info,"Running integration test with Softprobe backend...")
 	@docker compose -f test/docker-compose.yml up --build --abort-on-container-exit

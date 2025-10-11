@@ -27,13 +27,34 @@ See [docs/quickstart.md](docs/quickstart.md) for complete setup instructions.
   - [Docker Desktop](https://www.docker.com/products/docker-desktop)
   - [Kind](https://kind.sigs.k8s.io/) - `brew install kind`
   - [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl-macos/) - `brew install kubectl`
-  - [Istio CLI](https://istio.io/latest/docs/setup/getting-started/#download) - `curl -L https://istio.io/downloadIstio | sh -`
+  - [Istio CLI](https://istio.io/latest/docs/setup/getting-started/#download) - `brew install istioctl`
+
+Or install these tools all at once. 
 
 ```bash
-./scripts/cluster-setup.sh      # Create base environment  
-./scripts/deploy-demo-apps.sh   # Deploy demo applications
-./scripts/install-wasm-plugin.sh # Install SP Istio plugin
-./scripts/start-port-forwarding.sh # Start port forwarding
+brew install kind kubectl istioctl
+```
+
+### Run the demo
+
+#### 1. Set up a `Kind` cluster, `Istio` and `OpenTelemetry Operator`.
+
+```bash
+./scripts/cluster-setup.sh
+```
+
+#### 2. Install the travel demo
+
+```bash
+kubectl apply -f examples/travel/*.yaml
+kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80
+```
+Verify demo app is up and running by open [`http://localhost:8080/`](http://localhost:8080/) in browser. 
+
+#### 3. Deploy Softprobe Istio WASM Plugin
+
+```bash
+kubectl apply -f deploy/minimal.yaml
 ```
 
 **Access**: http://localhost:8080, http://localhost:8081, https://o.softprobe.ai

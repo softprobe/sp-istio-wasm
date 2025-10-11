@@ -61,11 +61,13 @@ https://github.com/user-attachments/assets/dc8c68db-dd8b-4da8-a6e2-346adf6ecffb
 kind delete cluster --name sp-demo-cluster
 ```
 
-### Production Deployment
+## Production Deployment
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio/main/deploy/minimal.yaml
 ```
+
+# Development
 
 ### 1. Build the WASM Extension
 

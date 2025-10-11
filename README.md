@@ -45,9 +45,9 @@ curl -L https://raw.githubusercontent.com/softprobe/sp-istio-wasm/refs/heads/mai
 # Install Softprobe Istio WASM Plugin
 kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio-wasm/refs/heads/main/deploy/minimal.yaml
 # Install demo app
-kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio-wasm/refs/heads/main/examples/travel/*.yaml
+kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio-wasm/refs/heads/main/examples/travel/apps.yaml
 # Expose the demo
-kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80
+sleep 10 && kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80
 ```
 
 Play with the demo travel app by open [`http://localhost:8080/`](http://localhost:8080/) in browser, select a pari of cities and do a search, book and payment (fill any fake information). Then you can go to [Softprobe Dashboard](https://dashboard.softprobe.ai), check `Trave View` on the left navagation menu.

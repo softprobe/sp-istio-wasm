@@ -1,0 +1,210 @@
+# Demo Applications
+# Deploy this AFTER the cluster setup
+---
+# Demo OTA Application
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-ota
+  namespace: default
+  labels:
+    app: demo-ota
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-ota
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: demo-ota
+        version: v1
+        service: demo-ota
+      annotations:
+        # OpenTelemetry auto-instrumentation for Java
+        instrumentation.opentelemetry.io/inject-java: "true"
+        sidecar.istio.io/inject: "true"
+    spec:
+      serviceAccountName: default
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+      containers:
+        - name: demo-ota
+          image:  docker.io/softprobe/sp-ota:v1.0.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: SERVER_PORT
+              value: "8080"           
+          resources:
+            requests:
+              memory: "1000Mi"
+              cpu: 500m
+            limits:
+              memory: "1500Mi"
+              cpu: 1000m
+          ports:
+            - containerPort: 8080
+---
+# Demo OTA Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-ota
+  namespace: default
+  labels:
+    app: demo-ota
+    service: demo-ota
+spec:
+  selector:
+    app: demo-ota
+  ports:
+    - protocol: TCP
+      name: http-8080
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+---
+# Demo Airline Application
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-airline
+  namespace: default
+  labels:
+    app: demo-airline
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-airline
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: demo-airline
+        version: v1
+        service: demo-airline
+      annotations:
+        # OpenTelemetry auto-instrumentation for Java
+        instrumentation.opentelemetry.io/inject-java: "true"
+        sidecar.istio.io/inject: "true"
+    spec:
+      serviceAccountName: default
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+      containers:
+        - name: demo-airline
+          image: docker.io/softprobe/sp-airline:v1.0.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: SERVER_PORT
+              value: "8081"
+          resources:
+            requests:
+              memory: "1000Mi"
+              cpu: 500m
+            limits:
+              memory: "1500Mi"
+              cpu: 1000m
+          ports:
+            - containerPort: 8081
+---
+# Demo Airline Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-airline
+  namespace: default
+  labels:
+    app: demo-airline
+    service: demo-airline
+spec:
+  selector:
+    app: demo-airline
+  ports:
+    - protocol: TCP
+      port: 8081
+      targetPort: 8081
+      name: http
+  type: ClusterIP
+---
+# Istio Gateway
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: demo-gateway
+  namespace: default
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+---
+# Istio VirtualService
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: demo-travel-vs
+  namespace: default
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - demo-gateway
+  http:
+  - match:
+    - headers:
+        host:
+          exact: ota.local
+    route:
+    - destination:
+        host: demo-ota
+        port:
+          number: 8080
+  - match:
+    - headers:
+        host:
+          exact: airline.local
+    route:
+    - destination:
+        host: demo-airline
+        port:
+          number: 8081
+  - match:
+    - uri:
+        prefix: "/airline-api"
+    route:
+    - destination:
+        host: demo-airline
+        port:
+          number: 8081
+  - match:
+    - uri:
+        prefix: "/"
+    route:
+    - destination:
+        host: demo-ota
+        port:
+          number: 8080

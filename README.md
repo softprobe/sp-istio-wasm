@@ -18,8 +18,6 @@ SP-Istio Agent is a WebAssembly (WASM) plugin for Istio that captures complete H
 
 ## Quick Start
 
-See [docs/quickstart.md](docs/quickstart.md) for complete setup instructions.
-
 ### Prerequisites
 
 - **Operating System**: macOS (or Linux with docker)
@@ -57,7 +55,19 @@ Verify demo app is up and running by open [`http://localhost:8080/`](http://loca
 kubectl apply -f deploy/minimal.yaml
 ```
 
-**Access**: http://localhost:8080, http://localhost:8081, https://o.softprobe.ai
+### 4. Browse the travel app
+
+Play with the demo travel app by open [`http://localhost:8080/`](http://localhost:8080/) in browser, select a pari of cities and do a search, book and payment (fill any fake information). Then you can go to [Softprobe Dashboard](https://dashboard.softprobe.ai), check `Trave View` on the left navagation menu.
+
+<video src="docs/assets/traceview.mp4" width="800" height="600" controls>
+  Your browser does not support the video tag.
+</video>
+
+#### 5. Cleanup
+
+```bash
+kind delete cluster --name sp-demo-cluster
+```
 
 ### Production Deployment
 
@@ -76,10 +86,10 @@ This will:
 - Calculate the SHA256 hash
 - Show commands to update Istio configurations
 
-### 2. Test Locally (Recommended)
+### 2. Test with local envoy and docker (Recommended)
 
 ```bash
-make test
+make integration-test
 ```
 
 This will:
@@ -117,23 +127,11 @@ kubectl get wasmplugin -A
 
 ### Build Only
 ```bash
-cargo build --target wasm32-unknown-unknown --release
-```
-
-### Deployment Operations
-```bash
-./deploy.sh deploy     # Deploy to cluster
-./deploy.sh status     # Check status
-./deploy.sh restart    # Restart pods
-./deploy.sh remove     # Remove extension
+make build
 ```
 
 ## Architecture
 
-### Components
-
-- **src/lib.rs**: Main WASM extension logic with HTTP context handling
-- **src/otel.rs**: OpenTelemetry span creation and serialization
 
 ### Flow
 
@@ -236,13 +234,6 @@ kubectl logs <pod-name> -c istio-proxy | grep "SP"
 2. Verify Softprobe endpoint connectivity
 3. Check request/response flow in logs
 
-### Local Testing
-
-Use the local Envoy setup for debugging:
-```bash
-./test.sh envoy
-tail -f envoy.log | grep "SP"
-```
 
 ## Performance Considerations
 

@@ -1,18 +1,18 @@
 #!/bin/bash
 
-# SP Istio WASM - Kubernetes Cluster and Istio Setup Script
-# This script is used to create and configure the entire environment from scratch, including Kind cluster, Istio service mesh and OpenTelemetry
+# SP Istio WASM - Kubernetes cluster and Istio setup script
+# This script creates and configures the entire environment from scratch, including Kind cluster, Istio service mesh, and OpenTelemetry
 
 set -e
 
-echo "🚀 Starting SP Istio WASM demo environment setup..."
+CLUSTER_NAME="sp-demo-cluster"
 
 # 1. Create Kind cluster
 echo "📦 Creating Kind cluster..."
-if kind get clusters | grep -q "sp-demo-cluster"; then
-    echo "⚠️  Cluster sp-demo-cluster already exists, skipping creation"
+if kind get clusters | grep -q "$CLUSTER_NAME"; then
+    echo "⚠️  Cluster $CLUSTER_NAME already exists, skipping creation"
 else
-    kind create cluster --name sp-demo-cluster
+    kind create cluster --name $CLUSTER_NAME
     echo "✅ Kind cluster creation completed"
 fi
 
@@ -22,12 +22,12 @@ if ! kubectl cluster-info &> /dev/null; then
     echo "❌ Unable to connect to Kubernetes cluster"
     exit 1
 fi
-echo "✅ Cluster connection normal"
+echo "✅ Cluster connection is normal"
 
 # 2. Install Istio
 echo "🌐 Installing Istio..."
 if kubectl get namespace istio-system &> /dev/null; then
-    echo "⚠️  Istio already installed, skipping installation step"
+    echo "⚠️  Istio is already installed, skipping installation step"
 else
     istioctl install --set values.defaultRevision=default -y
     echo "✅ Istio installation completed"
@@ -41,7 +41,7 @@ echo "✅ Istio injection enabled"
 # 4. Install cert-manager (dependency for OpenTelemetry Operator)
 echo "🔐 Installing cert-manager..."
 if kubectl get deployment cert-manager -n cert-manager &> /dev/null; then
-    echo "⚠️  cert-manager already installed, skipping installation step"
+    echo "⚠️  cert-manager is already installed, skipping installation step"
 else
     kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
     
@@ -56,7 +56,7 @@ fi
 # 5. Install OpenTelemetry Operator
 echo "📊 Installing OpenTelemetry Operator..."
 if kubectl get deployment opentelemetry-operator-controller-manager -n opentelemetry-operator-system &> /dev/null; then
-    echo "⚠️  OpenTelemetry Operator already installed, skipping installation step"
+    echo "⚠️  OpenTelemetry Operator is already installed, skipping installation step"
 else
     kubectl apply -f https://github.com/open-telemetry/opentelemetry-operator/releases/latest/download/opentelemetry-operator.yaml
     # Wait for OpenTelemetry Operator to be ready
@@ -76,7 +76,7 @@ fi
 
 # 6. Apply OpenTelemetry auto-instrumentation configuration
 echo "📊 Applying OpenTelemetry auto-instrumentation configuration..."
-kubectl apply -f deploy/examples/auto-instrumentation.yaml
+kubectl apply -f deploy/otel-auto-instrumentation.yaml
 
 # Wait for configuration processing
 echo "⏳ Waiting for configuration processing..."

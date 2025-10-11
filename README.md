@@ -18,8 +18,6 @@ SP-Istio Agent is a WebAssembly (WASM) plugin for Istio that captures complete H
 
 ## Quick Start
 
-See [docs/quickstart.md](docs/quickstart.md) for complete setup instructions.
-
 ### Prerequisites
 
 - **Operating System**: macOS (or Linux with docker)
@@ -27,16 +25,49 @@ See [docs/quickstart.md](docs/quickstart.md) for complete setup instructions.
   - [Docker Desktop](https://www.docker.com/products/docker-desktop)
   - [Kind](https://kind.sigs.k8s.io/) - `brew install kind`
   - [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl-macos/) - `brew install kubectl`
-  - [Istio CLI](https://istio.io/latest/docs/setup/getting-started/#download) - `curl -L https://istio.io/downloadIstio | sh -`
+  - [Istio CLI](https://istio.io/latest/docs/setup/getting-started/#download) - `brew install istioctl`
+
+Or install these tools all at once. 
 
 ```bash
-./scripts/cluster-setup.sh      # Create base environment  
-./scripts/deploy-demo-apps.sh   # Deploy demo applications
-./scripts/install-wasm-plugin.sh # Install SP Istio plugin
-./scripts/start-port-forwarding.sh # Start port forwarding
+brew install kind kubectl istioctl
 ```
 
-**Access**: http://localhost:8080, http://localhost:8081, https://o.softprobe.ai
+### Run the demo
+
+#### 1. Set up a `Kind` cluster, `Istio` and `OpenTelemetry Operator`.
+
+```bash
+./scripts/cluster-setup.sh
+```
+
+#### 2. Install the travel demo
+
+```bash
+kubectl apply -f examples/travel/*.yaml
+kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80
+```
+Verify demo app is up and running by open [`http://localhost:8080/`](http://localhost:8080/) in browser. 
+
+#### 3. Deploy Softprobe Istio WASM Plugin
+
+```bash
+kubectl apply -f deploy/minimal.yaml
+```
+
+### 4. Browse the travel app
+
+Play with the demo travel app by open [`http://localhost:8080/`](http://localhost:8080/) in browser, select a pari of cities and do a search, book and payment (fill any fake information). Then you can go to [Softprobe Dashboard](https://dashboard.softprobe.ai), check `Trave View` on the left navagation menu.
+
+<video src="docs/assets/traceview.mp4" width="800" height="600" controls>
+  Your browser does not support the video tag.
+</video>
+
+#### 5. Cleanup
+
+```bash
+kind delete cluster --name sp-demo-cluster
+```
 
 ### Production Deployment
 
@@ -55,10 +86,10 @@ This will:
 - Calculate the SHA256 hash
 - Show commands to update Istio configurations
 
-### 2. Test Locally (Recommended)
+### 2. Test with local envoy and docker (Recommended)
 
 ```bash
-make test
+make integration-test
 ```
 
 This will:
@@ -96,23 +127,11 @@ kubectl get wasmplugin -A
 
 ### Build Only
 ```bash
-cargo build --target wasm32-unknown-unknown --release
-```
-
-### Deployment Operations
-```bash
-./deploy.sh deploy     # Deploy to cluster
-./deploy.sh status     # Check status
-./deploy.sh restart    # Restart pods
-./deploy.sh remove     # Remove extension
+make build
 ```
 
 ## Architecture
 
-### Components
-
-- **src/lib.rs**: Main WASM extension logic with HTTP context handling
-- **src/otel.rs**: OpenTelemetry span creation and serialization
 
 ### Flow
 
@@ -215,13 +234,6 @@ kubectl logs <pod-name> -c istio-proxy | grep "SP"
 2. Verify Softprobe endpoint connectivity
 3. Check request/response flow in logs
 
-### Local Testing
-
-Use the local Envoy setup for debugging:
-```bash
-./test.sh envoy
-tail -f envoy.log | grep "SP"
-```
 
 ## Performance Considerations
 

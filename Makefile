@@ -106,10 +106,6 @@ update-configs: ## Update deployment configs with new WASM hash
 		exit 1; \
 	fi
 
-test: build ## Run local tests with Envoy
-	$(call print_info,"Running local tests...")
-	@./scripts/test.sh
-
 integration-test: build ## Run comprehensive integration test with Softprobe backend verification
 	$(call print_info,"Running integration test with Softprobe backend...")
 	@docker compose -f test/docker-compose.yml up --build --abort-on-container-exit
@@ -118,7 +114,7 @@ integration-test: build ## Run comprehensive integration test with Softprobe bac
 docker-build: build ## Build Docker images (auto-versioned from Cargo.toml)
 	$(call print_info,"Building Docker images for version $(VERSION)...")
 	@HASH=$$(cat $(HASH_FILE)); \
-	docker build --build-arg WASM_SHA256=$$HASH -t $(WASM_IMAGE):$(VERSION) -f Dockerfile .
+	docker build --platform linux/amd64 --build-arg WASM_SHA256=$$HASH -t $(WASM_IMAGE):$(VERSION) -f Dockerfile .
 	@docker build -t $(ENVOY_IMAGE):$(VERSION) -f Dockerfile.envoy .
 	$(call print_success,"Docker images built")
 

@@ -33,41 +33,29 @@ Or install these tools all at once.
 brew install kind kubectl istioctl
 ```
 
-### Run the demo
-
-#### 1. Set up a `Kind` cluster, `Istio` and `OpenTelemetry Operator`.
+### 1. Set up a `Kind` cluster, `Istio` and `OpenTelemetry Operator`.
 
 ```bash
-./scripts/cluster-setup.sh
+curl -L https://raw.githubusercontent.com/softprobe/sp-istio-wasm/refs/heads/main/scripts/cluster-setup.sh | sh
 ```
 
-#### 2. Install the travel demo
+### 2. Install the travel demo
 
 ```bash
-kubectl apply -f examples/travel/*.yaml
+# Install Softprobe Istio WASM Plugin
+kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio-wasm/refs/heads/main/deploy/minimal.yaml
+# Install demo app
+kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio-wasm/refs/heads/main/examples/travel/*.yaml
+# Expose the demo
 kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80
 ```
-Verify demo app is up and running by open [`http://localhost:8080/`](http://localhost:8080/) in browser. 
-
-#### 3. Deploy Softprobe Istio WASM Plugin
-
-```bash
-kubectl apply -f deploy/minimal.yaml
-```
-
-### 4. Browse the travel app
 
 Play with the demo travel app by open [`http://localhost:8080/`](http://localhost:8080/) in browser, select a pari of cities and do a search, book and payment (fill any fake information). Then you can go to [Softprobe Dashboard](https://dashboard.softprobe.ai), check `Trave View` on the left navagation menu.
-
 
 https://github.com/user-attachments/assets/dc8c68db-dd8b-4da8-a6e2-346adf6ecffb
 
 
-<video src="docs/assets/traceview.mp4" width="800" height="600" controls>
-  Your browser does not support the video tag.
-</video>
-
-#### 5. Cleanup
+### 3. Cleanup
 
 ```bash
 kind delete cluster --name sp-demo-cluster

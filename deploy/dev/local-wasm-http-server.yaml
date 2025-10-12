@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sp-wasm-http
+  namespace: istio-system
+  labels:
+    app: sp-wasm-http
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sp-wasm-http
+  template:
+    metadata:
+      labels:
+        app: sp-wasm-http
+    spec:
+      containers:
+        - name: http
+          image: python:3.11-alpine
+          args: ["-m","http.server","8080","-d","/data"]
+          command: ["python"]
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: wasm
+              mountPath: /data
+              readOnly: false
+      volumes:
+        - name: wasm
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sp-wasm-http
+  namespace: istio-system
+spec:
+  selector:
+    app: sp-wasm-http
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+

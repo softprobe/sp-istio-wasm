@@ -40,7 +40,7 @@ jobs:
         sudo apt-get install -y curl jq protobuf-compiler
 
     - name: Check dependencies
-      run: make check-deps
+      run: make check-deps-build
 
     - name: Verify test configuration exists
       run: |

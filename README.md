@@ -61,15 +61,33 @@ https://github.com/user-attachments/assets/dc8c68db-dd8b-4da8-a6e2-346adf6ecffb
 kind delete cluster --name sp-demo-cluster
 ```
 
+
 ## Production Deployment
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio/main/deploy/minimal.yaml
 ```
 
-# Development
+## Development
 
-### 1. Build the WASM Extension
+### Prerequisites
+
+- Rust toolchain with `wasm32-unknown-unknown` target
+- Protocol Buffers compiler (`protobuf-compiler`)
+- kubectl and Istio (for deployment)
+
+```bash
+# Install Rust WASM target
+rustup target add wasm32-unknown-unknown
+
+# On Debian/Ubuntu
+sudo apt-get install protobuf-compiler
+
+# On macOS
+brew install protobuf
+```
+
+### Build the WASM Extension
 
 ```bash
 make build
@@ -80,7 +98,7 @@ This will:
 - Calculate the SHA256 hash
 - Show commands to update Istio configurations
 
-### 2. Test with local envoy and docker (Recommended)
+### Test with local envoy and docker
 
 ```bash
 make integration-test
@@ -92,7 +110,40 @@ This will:
 - Test the extension functionality
 - Show relevant logs
 
-### 3. Deploy to Istio
+### Test in Istio (Kind + Istio + OpenTelemetry Operator)
+
+#### Set up test cluster (Kind + local image, no registry)
+
+Use the Makefile to spin up a local Kind cluster, build the WASM, load the Docker image directly into Kind (no registry push), deploy the plugin, and install the demo app.
+
+```bash
+# 1) Create cluster, build + load local image, deploy plugin and demo app
+make dev-quickstart
+
+# 2) In a separate terminal, expose the demo on http://localhost:8080
+make forward
+
+# 3) (Optional) Check status
+make status
+kubectl get wasmplugin -n istio-system
+
+# 4) Cleanup cluster
+make cluster-down
+```
+
+#### Hot Reload
+Use this workflow to iterate on the WASM plugin without deleting the Kind cluster or demo apps.
+
+```bash
+make dev-reload
+```
+
+What `make dev-reload` does:
+- Builds `target/wasm32-unknown-unknown/release/sp_istio_agent.wasm`
+- Copies it to the `sp-wasm-http` pod (`istio-system`)
+- Patches WasmPlugin `spec.url` with a cache-busting query param so Envoy re-fetches the module (no pod restarts)
+
+## Deploy to Istio
 
 For production/global install, apply the WasmPlugin manifest under `deploy/`:
 
@@ -117,13 +168,6 @@ curl -sf "http://${GATEWAY_URL}/productpage" >/dev/null
 kubectl get wasmplugin -A
 ```
 
-## Manual Operations
-
-### Build Only
-```bash
-make build
-```
-
 ## Architecture
 
 
@@ -140,32 +184,6 @@ make build
 - **deploy/sp-istio-agent.yaml**: Global WasmPlugin manifest
 - **deploy/test-bookinfo.yaml**: Scoped test manifest for Bookinfo
 - **test/envoy.yaml**: Local Envoy configuration for testing
-
-## Development
-
-### Prerequisites
-
-- Rust toolchain with `wasm32-unknown-unknown` target
-- Protocol Buffers compiler (`protobuf-compiler`)
-- Envoy (for local testing)
-- kubectl and Istio (for deployment)
-
-### Setup Development Environment
-
-```bash
-# Install Rust WASM target
-rustup target add wasm32-unknown-unknown
-
-# Install Protocol Buffers compiler
-# On Debian/Ubuntu:
-sudo apt-get install protobuf-compiler
-
-# On macOS:
-brew install protobuf
-
-# On other systems, download from:
-# https://github.com/protocolbuffers/protobuf/releases
-```
 
 ## CI/CD Pipeline
 
@@ -220,7 +238,12 @@ shasum -a 256 target/wasm32-unknown-unknown/release/sp_istio_agent.wasm
 
 ### Agent Not Working
 
-1. Check extension logs for "SP" messages:
+1. Enable debug logging, uncommend the follwoing lines in `apps.yaml`
+```yaml
+        # Uncomment to enable WASM debug logging
+        sidecar.istio.io/componentLogLevel: "wasm:debug"
+```
+2. Restart the app, and check extension logs for "SP" messages:
 ```bash
 kubectl logs <pod-name> -c istio-proxy | grep "SP"
 ```

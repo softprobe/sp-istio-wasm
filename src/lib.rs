@@ -9,14 +9,15 @@ mod injection;
 mod context;
 mod http_helpers;
 mod trace_context;
+mod logging;
 
 use crate::config::Config;
 use crate::context::SpHttpContext;
-
-
 // Main entry point for the WASM module
 proxy_wasm::main! {{
+    // It's required to set the log level explicitly for the WASM module log to work correctly
     proxy_wasm::set_log_level(LogLevel::Debug);
+    sp_info!("SP-Istio Agent WASM module loaded.");
     proxy_wasm::set_root_context(|_| -> Box<dyn RootContext> {
         Box::new(SpRootContext::new())
     });

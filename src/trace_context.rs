@@ -37,7 +37,7 @@ pub fn extract_and_propagate_trace_context(
 ) {
     // Extract trace context from request headers
     if let Some(tracestate) = request_headers.get("tracestate") {
-        log::debug!("SP: Found tracestate in request: {}", tracestate);
+        crate::sp_debug!("Found tracestate in request: {}", tracestate);
 
         // Parse x-sp-traceparent from tracestate
         for entry in tracestate.split(',') {
@@ -53,10 +53,7 @@ pub fn extract_and_propagate_trace_context(
                         .map(|b| format!("{:02x}", b))
                         .collect::<String>();
                     
-                    log::debug!(
-                        "SP: Extracted trace context from x-sp-traceparent: {}, trace_id: {}, parent_span_id: {}",
-                        value, trace_id_hex, parent_id_hex
-                    );
+                    crate::sp_debug!("Extracted trace context from x-sp-traceparent: {}, trace_id: {}, parent_span_id: {}", value, trace_id_hex, parent_id_hex);
                     break;
                 }
             }
@@ -64,10 +61,10 @@ pub fn extract_and_propagate_trace_context(
     }
 
     // Check response headers for traceparent
-    if let Some(traceparent) = response_headers.get("traceparent") {
-        log::error!("SP: Found traceparent in response: {}", traceparent);
-        log::info!("SP: Would propagate trace context to response: {}", traceparent);
+    if let Some(_traceparent) = response_headers.get("traceparent") {
+        crate::sp_debug!("Found traceparent in response headers");
+        crate::sp_debug!("Would propagate trace context to response");
     } else {
-        log::debug!("SP: No traceparent found in response headers");
+        crate::sp_debug!("No traceparent found in response headers");
     }
 }

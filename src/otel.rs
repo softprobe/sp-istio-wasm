@@ -76,11 +76,6 @@ impl SpanBuilder {
         !self.session_id.is_empty()
     }
     
-    /// Get session_id value for logging purposes
-    pub fn get_session_id(&self) -> &str {
-        &self.session_id
-    }
-    
     /// Get trace_id as hex string
     pub fn get_current_span_id_hex(&self) -> String {
         self.current_span_id.iter().map(|b| format!("{:02x}", b)).collect::<String>()
@@ -93,18 +88,18 @@ impl SpanBuilder {
     pub fn with_context(mut self, headers: &HashMap<String, String>) -> Self {
         // Extract trace context from tracestate x-sp-traceparent if present
         if let Some(tracestate) = headers.get("tracestate") {
-            log::error!("DEBUG: Found tracestate in headers: {}", tracestate);
+            crate::sp_debug!("Found tracestate header {}", tracestate);
             
             // 解析 tracestate 中的 x-sp-traceparent
             for entry in tracestate.split(',') {
                 let entry = entry.trim();
                 if let Some(value) = entry.strip_prefix("x-sp-traceparent=") {
-                    log::error!("DEBUG: Found x-sp-traceparent in tracestate: {}", value);
+                    crate::sp_debug!("Found x-sp-traceparent entry in tracestate {}", value);
                     // 解析完整的 traceparent 格式: 00-trace_id-span_id-01
                     if let Some((trace_id, span_id)) = parse_traceparent(value) {
                         self.trace_id = trace_id;
                         self.parent_span_id = Some(span_id);
-                        log::error!("DEBUG: Successfully parsed trace context from x-sp-traceparent");
+                        crate::sp_debug!("Parsed trace context from x-sp-traceparent");
                         break;
                     }
                 }
@@ -114,27 +109,28 @@ impl SpanBuilder {
         // 如果没有从 tracestate 中解析到 trace context，尝试从标准的 traceparent 头部解析
         if self.trace_id.is_empty() {
             if let Some(traceparent) = headers.get("traceparent") {
-                log::error!("DEBUG: Found traceparent in headers: {}", traceparent);
+                crate::sp_debug!("Found traceparent header {}", traceparent);
                 // 解析标准的 traceparent 格式: 00-trace_id-span_id-01
                 if let Some((trace_id, span_id)) = parse_traceparent(traceparent) {
                     self.trace_id = trace_id;
                     self.parent_span_id = Some(span_id);
-                    log::error!("DEBUG: Successfully parsed trace context from traceparent");
+                    crate::sp_debug!("Parsed trace context from traceparent");
                 }
             }
         }
 
         // Get session ID from headers directly
-        log::error!("DEBUG: Looking for session_id in headers...");
+        crate::sp_debug!("Looking for session_id in headers");
         let session_id_found = headers.get("x-sp-session-id")
             .or_else(|| headers.get("sp_session_id"))
             .or_else(|| headers.get("x-session-id"));
 
         if let Some(session_id) = session_id_found {
-            log::error!("DEBUG: Found session_id in headers: '{}'", session_id);
+            let masked = if session_id.len() > 4 { "****" } else { "" };
+            crate::sp_debug!("Found session_id in headers: {}", masked);
             self.session_id = session_id.clone();
         } else {
-            log::error!("DEBUG: No session_id found in headers: {:?}", headers.keys().collect::<Vec<_>>());
+            crate::sp_debug!("No session_id found in headers");
         }
 
         // If no valid trace context found, generate new one
@@ -290,7 +286,7 @@ impl SpanBuilder {
         let span_id = self.current_span_id.clone();
         let mut attributes = Vec::new();
 
-        log::error!("DEBUG: service_name value: '{}'", self.service_name);
+        crate::sp_debug!("Building extract span: service_name set {}", self.service_name);
         attributes.push(KeyValue {
             key: "sp.service.name".to_string(),
             value: Some(AnyValue {
@@ -299,7 +295,7 @@ impl SpanBuilder {
         });
 
         // Add traffic direction attribute
-        log::error!("DEBUG: traffic_direction value: '{}'", self.traffic_direction);
+        crate::sp_debug!("Building extract span: traffic_direction set {}", self.traffic_direction);
         attributes.push(KeyValue {
             key: "sp.traffic.direction".to_string(),
             value: Some(AnyValue {
@@ -324,9 +320,8 @@ impl SpanBuilder {
         });
 
         // Add API key attribute if present
-        log::error!("DEBUG: api_key value: '{}'", self.api_key);
         if !self.api_key.is_empty() {
-            log::error!("DEBUG: Adding api_key attribute");
+            crate::sp_debug!("Building extract span: api_key present");
             attributes.push(KeyValue {
                 key: "sp.api.key".to_string(),
                 value: Some(AnyValue {
@@ -334,13 +329,12 @@ impl SpanBuilder {
                 }),
             });
         } else {
-            log::error!("DEBUG: api_key is empty, not adding attribute");
+            crate::sp_debug!("api_key is empty, not adding attribute");
         }
 
         // Add session ID attribute if present
-        log::error!("DEBUG: session_id value: '{}'", self.session_id);
         if !self.session_id.is_empty() {
-            log::error!("DEBUG: Adding session_id attribute");
+            crate::sp_debug!("Building extract span: session_id present: {}", self.session_id);
             attributes.push(KeyValue {
                 key: "sp.session.id".to_string(),
                 value: Some(AnyValue {
@@ -348,7 +342,7 @@ impl SpanBuilder {
                 }),
             });
         } else {
-            log::error!("DEBUG: session_id is empty, not adding attribute");
+            crate::sp_debug!("session_id is empty, not adding attribute");
         }
 
         // Add request headers

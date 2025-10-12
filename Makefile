@@ -5,6 +5,9 @@
 	apply-wasm deploy-wasm-http copy-wasm-http use-wasm-http dev-quickstart \
 	dev-setup dev-reload
 
+# Additional phony targets
+.PHONY: check-deps-build check-deps-k8s
+
 # Configuration
 BINARY_NAME := sp_istio_agent
 WASM_TARGET := wasm32-unknown-unknown
@@ -57,14 +60,20 @@ help: ## Show this help message
 	@echo "Available targets:"
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ { printf "  %-20s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
-check-deps: ## Check if required dependencies are installed
-	$(call print_info,"Checking dependencies...")
+check-deps-build: ## Check build-only dependencies (used by CI/build)
+	$(call print_info,"Checking build dependencies...")
 	@command -v cargo >/dev/null || (echo "$(RED)❌ Rust/Cargo not found. Install from https://rustup.rs/$(RESET)" >&2 && exit 1)
+	@rustup target list --installed | grep -q $(WASM_TARGET) || (echo "$(BLUE)ℹ️  Installing WASM target...$(RESET)" && rustup target add $(WASM_TARGET))
+	$(call print_success,"Build dependencies check completed")
+
+check-deps-k8s: ## Check Kubernetes/Istio tooling (needed for local cluster workflows)
+	$(call print_info,"Checking Kubernetes/Istio dependencies...")
 	@command -v kubectl >/dev/null || (echo "$(RED)❌ kubectl not found. Install: brew install kubectl$(RESET)" >&2 && exit 1)
 	@command -v kind >/dev/null || (echo "$(RED)❌ kind not found. Install: brew install kind$(RESET)" >&2 && exit 1)
 	@command -v istioctl >/dev/null || (echo "$(RED)❌ istioctl not found. Install: brew install istioctl$(RESET)" >&2 && exit 1)
-	@rustup target list --installed | grep -q $(WASM_TARGET) || (echo "$(BLUE)ℹ️  Installing WASM target...$(RESET)" && rustup target add $(WASM_TARGET))
-	$(call print_success,"Dependencies check completed")
+	$(call print_success,"Kubernetes/Istio dependencies check completed")
+
+check-deps: check-deps-build check-deps-k8s ## Check all dependencies (build + Kubernetes/Istio)
 
 clean: ## Clean build artifacts
 	$(call print_info,"Cleaning build artifacts...")
@@ -72,7 +81,7 @@ clean: ## Clean build artifacts
 	@rm -f $(HASH_FILE)
 	$(call print_success,"Clean completed")
 
-build: check-deps ## Build WASM binary
+build: check-deps-build ## Build WASM binary
 	$(call print_info,"Building WASM binary...")
 	@cargo build --target $(WASM_TARGET) --release
 	@if [ -f "$(WASM_FILE)" ]; then \

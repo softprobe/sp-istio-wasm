@@ -201,8 +201,7 @@ dev-quickstart: cluster-down cluster-up apply-wasm deploy-wasm-http copy-wasm-ht
 	$(call print_info,"Restarting sidecars to reload WASM...")
 	@kubectl -n istio-system rollout restart deploy istio-ingressgateway || true
 	@kubectl -n default rollout restart deploy demo-ota demo-airline || true
-	$(call print_info,"Starting port forwarding on 8080...")
-	@kubectl -n istio-system port-forward svc/istio-ingressgateway 8080:80
+	$(call print_info,"Run `make forward` to start port forwarding on 8080...")
 
 dev-setup: apply-wasm deploy-wasm-http use-wasm-http ## One-time setup to enable HTTP-served WASM
 	$(call print_success,"Development setup completed. Use 'make dev-reload' for fast reloads")

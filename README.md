@@ -4,6 +4,8 @@
 
 Zero-code changes required • Complete request visibility • Advanced troubleshooting
 
+High-performance, asynchronous HTTP session capture built with Rust and WebAssembly (WASM)
+
 ## What is SP-Istio Agent?
 
 SP-Istio Agent is a WebAssembly (WASM) plugin for Istio that captures complete HTTP request/response data and sends it to Softprobe for business-level analytics and troubleshooting without modifying application code.
@@ -11,10 +13,11 @@ SP-Istio Agent is a WebAssembly (WASM) plugin for Istio that captures complete H
 ### Key Benefits
 
 - **🔍 Complete Visibility**: Capture full HTTP request/response data across your service mesh
-- **🚀 Faster Troubleshooting**: Business-level tracing reduces debugging time from hours to minutes  
+- **🚀 Faster Troubleshooting**: Business-level tracing reduces debugging time from hours to minutes
 - **📊 Data Analytics**: Rich insights into API usage patterns and business flows
 - **⚡ Zero Intrusion**: No application code changes required
 - **🔒 Enterprise Ready**: Production-grade security and performance
+ - **🏎️ High Performance & Async**: Rust+WASM streaming, asynchronous HTTP capture with minimal overhead
 
 ## Quick Start
 
@@ -254,7 +257,6 @@ kubectl logs <pod-name> -c istio-proxy | grep "SP"
 
 ## Performance Considerations
 
-- Body buffering impacts performance for large payloads
-- Extension adds latency for agent lookups
-- Async storage minimizes impact on response time
-- Consider implementing size limits for buffered content
+- Bodies are processed in a streaming fashion; responses are forwarded as chunks arrive (no full-body blocking)
+- Optional buffering (for analytics/extraction) increases memory/CPU; prefer incremental processing and apply size caps/sampling
+- Async storage keeps tail latency low; only lightweight work happens on the hot path

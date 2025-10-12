@@ -21,8 +21,6 @@ spec:
           - path: ".*"
   vmConfig:
     env:
-      - name: WASM_LOG_LEVEL
-        value: "debug"
 ---
 # CLIENT Mode - Deployed on demo-ota to collect outbound traffic
 apiVersion: extensions.istio.io/v1alpha1
@@ -47,8 +45,6 @@ spec:
             paths: [".*"]
   vmConfig:
     env:
-      - name: WASM_LOG_LEVEL
-        value: "debug"
 ---
 apiVersion: networking.istio.io/v1beta1
 kind: ServiceEntry

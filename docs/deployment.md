@@ -113,7 +113,6 @@ pluginConfig:
   # Observability
   service_name: "production-cluster"
   enable_detailed_logging: false
-  log_level: "warn"
 ```
 
 ## Environment-Specific Configurations
@@ -126,7 +125,6 @@ pluginConfig:
   sp_backend_url: "https://dev.softprobe.ai"
   enable_inject: true
   enable_detailed_logging: true
-  log_level: "debug"
   cache_ttl_seconds: 300  # 5 minutes
 ```
 
@@ -138,7 +136,6 @@ pluginConfig:
   sp_backend_url: "https://staging.softprobe.ai"
   enable_inject: true
   enable_detailed_logging: false
-  log_level: "info"
   cache_ttl_seconds: 1800  # 30 minutes
 ```
 
@@ -150,7 +147,6 @@ pluginConfig:
   sp_backend_url: "https://o.softprobe.ai"
   enable_inject: true
   enable_detailed_logging: false
-  log_level: "warn"
   cache_ttl_seconds: 3600  # 1 hour
   max_cache_size_mb: 200
 ```
@@ -398,16 +394,12 @@ kubectl exec deployment/your-app -c istio-proxy -- \
 ### Performance Debugging
 
 ```bash
-# Enable debug logging temporarily
-kubectl patch wasmplugin sp-istio-agent -n istio-system \
-  --type='json' -p='[{"op": "replace", "path": "/spec/pluginConfig/log_level", "value": "debug"}]'
+# Enable debug logging temporarily via Istio componentLogLevel
+# Example (workload annotation):
+# sidecar.istio.io/componentLogLevel: "wasm:debug"
 
 # View detailed logs
 kubectl logs deployment/your-app -c istio-proxy | grep SP
-
-# Revert logging level
-kubectl patch wasmplugin sp-istio-agent -n istio-system \
-  --type='json' -p='[{"op": "replace", "path": "/spec/pluginConfig/log_level", "value": "warn"}]'
 ```
 
 ## Backup and Recovery

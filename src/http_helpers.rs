@@ -8,29 +8,25 @@ pub fn extract_client_info(request_headers: &HashMap<String, String>) -> (Option
 
     // Extract from Referer header
     if let Some(referer) = request_headers.get("referer") {
-        log::info!("SP: Found referer header: {}", referer);
+        crate::sp_debug!("Found referer header: {}", referer);
         if let Ok(url) = Url::parse(referer) {
             client_host = url.host_str().map(|h| h.to_string());
             client_path = Some(url.path().to_string());
-            log::info!(
-                "SP: Parsed from referer - host: {:?}, path: {:?}",
-                client_host,
-                client_path
-            );
+            crate::sp_debug!("Parsed referer host={:?} path={:?}", client_host, client_path);
         } else {
-            log::info!("SP: Failed to parse referer as URL: {}", referer);
+            crate::sp_debug!("Failed to parse referer as URL: {}", referer);
         }
     }
 
     // Extract from Origin header (if Referer doesn't exist)
     if client_host.is_none() {
         if let Some(origin) = request_headers.get("origin") {
-            log::info!("SP: Found origin header: {}", origin);
+            crate::sp_debug!("Found origin header: {}", origin);
             if let Ok(url) = Url::parse(origin) {
                 client_host = url.host_str().map(|h| h.to_string());
-                log::info!("SP: Parsed from origin - host: {:?}", client_host);
+                crate::sp_debug!("Parsed origin host={:?}", client_host);
             } else {
-                log::info!("SP: Failed to parse origin as URL: {}", origin);
+                crate::sp_debug!("Failed to parse origin as URL: {}", origin);
             }
         }
     }
@@ -38,10 +34,10 @@ pub fn extract_client_info(request_headers: &HashMap<String, String>) -> (Option
     // Extract from Host header (as fallback)
     if client_host.is_none() {
         if let Some(host) = request_headers.get("host") {
-            log::info!("SP: Found host header: {}", host);
+            crate::sp_debug!("Found host header: {}", host);
             if let Ok(url) = Url::parse(&format!("http://{}", host)) {
                 client_host = url.host_str().map(|h| h.to_string());
-                log::info!("SP: Parsed from host - host: {:?}", client_host);
+                crate::sp_debug!("Parsed host header host={:?}", client_host);
             }
         }
     }
@@ -59,11 +55,7 @@ pub fn extract_client_info(request_headers: &HashMap<String, String>) -> (Option
         client_path = request_headers.get(":path").cloned();
     }
 
-    log::info!(
-        "SP: Final client info - host: {:?}, path: {:?}",
-        client_host,
-        client_path
-    );
+    crate::sp_debug!("Final client info computed host={:?} path={:?}", client_host, client_path);
     (client_host, client_path)
 }
 

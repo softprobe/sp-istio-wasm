@@ -28,7 +28,8 @@ spec:
         sidecar.istio.io/inject: "true"
         # Set log levels
         sidecar.istio.io/logLevel: "info"
-        sidecar.istio.io/componentLogLevel: "wasm:debug"
+        # Uncomment to enable WASM debug logging
+        # sidecar.istio.io/componentLogLevel: "wasm:debug"
     spec:
       serviceAccountName: default
       securityContext:
@@ -103,7 +104,8 @@ spec:
         sidecar.istio.io/inject: "true"
         # Set log levels
         sidecar.istio.io/logLevel: "info"
-        sidecar.istio.io/componentLogLevel: "wasm:debug"
+        # Uncomment to enable WASM debug logging
+        # sidecar.istio.io/componentLogLevel: "wasm:debug"
     spec:
       serviceAccountName: default
       securityContext:

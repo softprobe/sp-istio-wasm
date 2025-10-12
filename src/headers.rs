@@ -7,7 +7,7 @@ pub fn detect_service_name(
 ) -> String {
     // Use configured service_name if it's not default
     if !config_service_name.is_empty() && config_service_name != "default-service" {
-        log::error!("SP: ✓ Using configured service_name: {}", config_service_name);
+        crate::sp_debug!("Using configured service_name: {}", config_service_name);
         return config_service_name.to_string();
     }
 
@@ -15,11 +15,7 @@ pub fn detect_service_name(
     for header_name in current_service_headers {
         if let Some(header_value) = request_headers.get(header_name) {
             if !header_value.is_empty() {
-                log::error!(
-                    "SP: ✓ Got service_name from {} header: {}",
-                    header_name,
-                    header_value
-                );
+                crate::sp_debug!("Got service_name from header: {} -> {}", header_name, header_value);
                 return header_value.clone();
             }
         }
@@ -48,7 +44,7 @@ pub fn build_new_tracestate(
     tracestate_entries.insert(0, format!("x-sp-traceparent={}", traceparent_value));
 
     let new_tracestate = tracestate_entries.join(",");
-    log::debug!("SP: Adding x-sp-traceparent to tracestate: {}", new_tracestate);
+    crate::sp_debug!("Adding x-sp-traceparent to tracestate: {}", new_tracestate);
 
     new_tracestate
 }

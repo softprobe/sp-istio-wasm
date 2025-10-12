@@ -44,10 +44,7 @@ pub fn parse_otel_injection_response(response_body: &[u8]) -> Result<Option<Agen
     use crate::otel::TracesData;
     use prost::Message;
 
-    log::info!(
-        "SP: Starting protobuf decode of {} bytes",
-        response_body.len()
-    );
+    crate::sp_debug!("Starting protobuf decode ({} bytes)", response_body.len());
 
     // Decode OTEL protobuf response
     let traces_data = TracesData::decode(response_body).map_err(|e| {
@@ -55,31 +52,15 @@ pub fn parse_otel_injection_response(response_body: &[u8]) -> Result<Option<Agen
         format!("Serialization error: {}", e)
     })?;
 
-    log::info!(
-        "SP: Successfully decoded protobuf, found {} resource spans",
-        traces_data.resource_spans.len()
-    );
+    crate::sp_debug!("Decoded protobuf with {} resource spans", traces_data.resource_spans.len());
 
     // Extract agent HTTP response from span attributes
     for (i, resource_span) in traces_data.resource_spans.iter().enumerate() {
-        log::debug!(
-            "SP: Processing resource span {}, found {} scope spans",
-            i,
-            resource_span.scope_spans.len()
-        );
+        crate::sp_debug!("Processing resource span {}, found {} scope spans", i, resource_span.scope_spans.len());
         for (j, scope_span) in resource_span.scope_spans.iter().enumerate() {
-            log::debug!(
-                "SP: Processing scope span {}, found {} spans",
-                j,
-                scope_span.spans.len()
-            );
+            crate::sp_debug!("Processing scope span {}, found {} spans", j, scope_span.spans.len());
             for (k, span) in scope_span.spans.iter().enumerate() {
-                log::debug!(
-                    "SP: Processing span {}, name: '{}', {} attributes",
-                    k,
-                    span.name,
-                    span.attributes.len()
-                );
+                crate::sp_debug!("Processing span {}, name: '{}', {} attributes", k, span.name, span.attributes.len());
                 
                 if let Some(agent_response) = extract_agent_response_from_span(span) {
                     return Ok(Some(agent_response));
@@ -88,7 +69,7 @@ pub fn parse_otel_injection_response(response_body: &[u8]) -> Result<Option<Agen
         }
     }
 
-    log::info!("SP: No agent response found in any spans");
+    crate::sp_debug!("No agent response found in any spans");
     Ok(None)
 }
 
@@ -138,20 +119,14 @@ fn extract_agent_response_from_span(span: &crate::otel::Span) -> Option<AgentRes
 
     // If we found response data, return it
     if !body.is_empty() || !headers.is_empty() {
-        log::info!(
-            "SP: Found agent response data in span '{}': status={}, {} headers, {} byte body",
-            span.name,
-            status_code,
-            headers.len(),
-            body.len()
-        );
+        crate::sp_debug!("Agent response in span: status={}, headers={}, body_bytes={}", status_code, headers.len(), body.len());
         Some(AgentResponse {
             status_code,
             headers,
             body,
         })
     } else {
-        log::info!("SP: No agent response data found in span '{}'", span.name);
+        crate::sp_debug!("No agent response data found in span");
         None
     }
 }

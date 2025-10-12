@@ -2,7 +2,8 @@
 .PHONY: help build test clean push deploy status logs check-deps \
 	cluster-up cluster-down docker-build-local \
 	deploy-demo forward quickstart docker-build docker-push version \
-	apply-wasm deploy-wasm-http copy-wasm-http use-wasm-http dev-quickstart
+	apply-wasm deploy-wasm-http copy-wasm-http use-wasm-http dev-quickstart \
+	dev-setup dev-reload
 
 # Configuration
 BINARY_NAME := sp_istio_agent
@@ -202,6 +203,21 @@ dev-quickstart: cluster-down cluster-up apply-wasm deploy-wasm-http copy-wasm-ht
 	@kubectl -n default rollout restart deploy demo-ota demo-airline || true
 	$(call print_info,"Starting port forwarding on 8080...")
 	@kubectl -n istio-system port-forward svc/istio-ingressgateway 8080:80
+
+dev-setup: apply-wasm deploy-wasm-http use-wasm-http ## One-time setup to enable HTTP-served WASM
+	$(call print_success,"Development setup completed. Use 'make dev-reload' for fast reloads")
+
+dev-reload: copy-wasm-http ## Build, copy, and hot-reload WASM via cache-busting WasmPlugin URL
+	$(call print_info,"Reloading WASM by cache-busting WasmPlugin URLs...")
+	@TS=$$(date +%s); \
+	kubectl -n istio-system patch wasmplugin sp-istio-agent-client \
+	  --type=json -p='[{"op":"replace","path":"/spec/url","value":"http://sp-wasm-http.istio-system.svc.cluster.local/plugin.wasm?v='"$$TS"'"}]'; \
+	kubectl -n istio-system patch wasmplugin sp-istio-agent-server \
+	  --type=json -p='[{"op":"replace","path":"/spec/url","value":"http://sp-wasm-http.istio-system.svc.cluster.local/plugin.wasm?v='"$$TS"'"}]'
+	$(call print_info,"Restarting ingressgateway to ensure WASM is reloaded...")
+	@kubectl -n istio-system rollout restart deploy/istio-ingressgateway || true
+	@kubectl -n istio-system rollout status  deploy/istio-ingressgateway --timeout=180s || true
+	$(call print_success,"WASM reloaded. You can now send traffic and view logs")
 
 version: ## Show current version from Cargo.toml
 	@echo "$(GREEN)Current version: $(VERSION)$(RESET)"

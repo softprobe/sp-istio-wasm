@@ -70,17 +70,17 @@ impl SpanBuilder {
         self.api_key = api_key;
         self
     }
-    
+
     /// Check if session_id is present and not empty
     pub fn has_session_id(&self) -> bool {
         !self.session_id.is_empty()
     }
-    
+
     /// Get session_id value for logging purposes
     pub fn get_session_id(&self) -> &str {
         &self.session_id
     }
-    
+
     /// Get trace_id as hex string
     pub fn get_current_span_id_hex(&self) -> String {
         self.current_span_id.iter().map(|b| format!("{:02x}", b)).collect::<String>()
@@ -94,7 +94,7 @@ impl SpanBuilder {
         // Extract trace context from tracestate x-sp-traceparent if present
         if let Some(tracestate) = headers.get("tracestate") {
             log::error!("DEBUG: Found tracestate in headers: {}", tracestate);
-            
+
             // 解析 tracestate 中的 x-sp-traceparent
             for entry in tracestate.split(',') {
                 let entry = entry.trim();
@@ -141,7 +141,7 @@ impl SpanBuilder {
         if self.trace_id.is_empty() {
             self.trace_id = generate_trace_id();
         }
-        
+
         self
     }
 
@@ -213,7 +213,7 @@ impl SpanBuilder {
                 }),
             });
         }
-        
+
         // Add request headers as attributes
         for (key, value) in request_headers {
             if !should_skip_header(key) {
@@ -225,7 +225,7 @@ impl SpanBuilder {
                 });
             }
         }
-        
+
         // Add url attributes if available
         if let Some(path) = url_path {
             attributes.push(KeyValue {
@@ -252,7 +252,7 @@ impl SpanBuilder {
                 use base64::{Engine as _, engine::general_purpose};
                 general_purpose::STANDARD.encode(request_body)
             };
-            
+
             attributes.push(KeyValue {
                 key: "http.request.body".to_string(),
                 value: Some(AnyValue {
@@ -260,7 +260,7 @@ impl SpanBuilder {
                 }),
             });
         }
-        
+
         let span = Span {
             trace_id: self.trace_id.clone(),
             span_id,
@@ -273,7 +273,7 @@ impl SpanBuilder {
             flags: 0,
             ..Default::default()
         };
-        
+
         self.create_traces_data(span)
     }
 
@@ -307,14 +307,6 @@ impl SpanBuilder {
             }),
         });
 
-        // Add span type attribute
-        attributes.push(KeyValue {
-            key: "span.type".to_string(),
-            value: Some(AnyValue {
-                value: Some(any_value::Value::StringValue("sp-envoy-proxy".to_string())),
-            }),
-        });
-
         // Add extract span type attribute
         attributes.push(KeyValue {
             key: "sp.span.type".to_string(),
@@ -322,20 +314,6 @@ impl SpanBuilder {
                 value: Some(any_value::Value::StringValue("extract".to_string())),
             }),
         });
-
-        // Add API key attribute if present
-        log::error!("DEBUG: api_key value: '{}'", self.api_key);
-        if !self.api_key.is_empty() {
-            log::error!("DEBUG: Adding api_key attribute");
-            attributes.push(KeyValue {
-                key: "sp.api.key".to_string(),
-                value: Some(AnyValue {
-                    value: Some(any_value::Value::StringValue(self.api_key.clone())),
-                }),
-            });
-        } else {
-            log::error!("DEBUG: api_key is empty, not adding attribute");
-        }
 
         // Add session ID attribute if present
         log::error!("DEBUG: session_id value: '{}'", self.session_id);
@@ -466,14 +444,37 @@ impl SpanBuilder {
         } else {
             self.service_name.clone()
         };
+        let mut attributes = Vec::new();
+
+        log::info!("DEBUG: api_key value: '{}'", self.api_key);
+        if !self.api_key.is_empty() {
+            log::error!("DEBUG: Adding api_key attribute");
+            attributes.push(KeyValue {
+                key: "sp.api.key".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(self.api_key.clone())),
+                }),
+            });
+        } else {
+            log::error!("DEBUG: api_key is empty, not adding attribute");
+        }
+
+        attributes.push(KeyValue {
+            key: "service.name".to_string(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue(service_name)),
+            }),
+        });
+
+        attributes.push(KeyValue {
+            key: "sp.resource.type".to_string(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue("sp-envoy-proxy".to_string())),
+            }),
+        });
 
         let resource = Resource {
-            attributes: vec![KeyValue {
-                key: "service.name".to_string(),
-                value: Some(AnyValue {
-                    value: Some(any_value::Value::StringValue(service_name)),
-                }),
-            }],
+            attributes,
             dropped_attributes_count: 0,
             entity_refs: vec![],
         };
@@ -497,7 +498,7 @@ impl SpanBuilder {
         let trace_id_hex = hex_encode(&self.trace_id);
         let span_id_hex = hex_encode(span_id);
         let trace_flags = "01"; // sampled flag set
-        
+
         format!("{}-{}-{}-{}", version, trace_id_hex, span_id_hex, trace_flags)
     }
 
@@ -513,30 +514,30 @@ pub fn serialize_traces_data(traces_data: &TracesData) -> Result<Vec<u8>, prost:
 
 fn generate_trace_id() -> Vec<u8> {
     let mut trace_id = vec![0u8; 16];
-    
+
     // Use current timestamp as source of randomness
     let now_nanos = get_current_timestamp_nanos();
     let secs = (now_nanos / 1_000_000_000) as u64;
     let nanos = (now_nanos % 1_000_000_000) as u64;
-    
+
     // Fill first 8 bytes with seconds
     trace_id[0..8].copy_from_slice(&secs.to_be_bytes());
     // Fill last 8 bytes with nanoseconds
     trace_id[8..16].copy_from_slice(&nanos.to_be_bytes());
-    
+
     trace_id
 }
 
 pub fn generate_span_id() -> Vec<u8> {
     let mut span_id = vec![0u8; 8];
-    
+
     // Use current timestamp as source of randomness
     let now_nanos = get_current_timestamp_nanos();
-    
+
     // Add some variation to make it different from trace ID
     let varied_nanos = now_nanos ^ 0xCAFEBABE;
     span_id.copy_from_slice(&varied_nanos.to_be_bytes());
-    
+
     span_id
 }
 
@@ -545,10 +546,10 @@ fn parse_traceparent(traceparent: &str) -> Option<(Vec<u8>, Vec<u8>)> {
     if parts.len() != 4 {
         return None;
     }
-    
+
     let trace_id = hex_decode(parts[1])?;
     let span_id = hex_decode(parts[2])?;
-    
+
     Some((trace_id, span_id))
 }
 
@@ -556,7 +557,7 @@ fn hex_decode(hex: &str) -> Option<Vec<u8>> {
     if hex.len() % 2 != 0 {
         return None;
     }
-    
+
     let mut result = Vec::new();
     for i in (0..hex.len()).step_by(2) {
         if let Ok(byte) = u8::from_str_radix(&hex[i..i+2], 16) {
@@ -565,7 +566,7 @@ fn hex_decode(hex: &str) -> Option<Vec<u8>> {
             return None;
         }
     }
-    
+
     Some(result)
 }
 
@@ -592,8 +593,8 @@ pub fn get_current_timestamp_nanos() -> u64 {
 }
 
 fn should_skip_header(key: &str) -> bool {
-    matches!(key.to_lowercase().as_str(), 
-        "authorization" | "cookie" | "set-cookie" | 
+    matches!(key.to_lowercase().as_str(),
+        "authorization" | "cookie" | "set-cookie" |
         "x-api-key" | "x-auth-token" | "bearer" |
         "proxy-authorization"
     )
@@ -601,7 +602,7 @@ fn should_skip_header(key: &str) -> bool {
 
 fn is_text_content(headers: &HashMap<String, String>) -> bool {
     if let Some(content_type) = headers.get("content-type") {
-        content_type.starts_with("text/") || 
+        content_type.starts_with("text/") ||
         content_type.starts_with("application/json") ||
         content_type.starts_with("application/xml") ||
         content_type.starts_with("application/x-www-form-urlencoded")

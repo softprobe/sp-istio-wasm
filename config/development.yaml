@@ -38,10 +38,9 @@ spec:
     async_timeout_ms: 10000  # 10 seconds for debugging
     max_concurrent_requests: 50
     
-    # Observability (verbose for development)
+    # Observability
     service_name: "dev-cluster"
     enable_detailed_logging: true
-    log_level: "debug"
     
     # Development Features
     bypass_cache: false

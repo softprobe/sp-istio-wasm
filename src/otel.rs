@@ -76,11 +76,6 @@ impl SpanBuilder {
         !self.session_id.is_empty()
     }
 
-    /// Get session_id value for logging purposes
-    pub fn get_session_id(&self) -> &str {
-        &self.session_id
-    }
-
     /// Get trace_id as hex string
     pub fn get_current_span_id_hex(&self) -> String {
         self.current_span_id.iter().map(|b| format!("{:02x}", b)).collect::<String>()
@@ -93,18 +88,18 @@ impl SpanBuilder {
     pub fn with_context(mut self, headers: &HashMap<String, String>) -> Self {
         // Extract trace context from tracestate x-sp-traceparent if present
         if let Some(tracestate) = headers.get("tracestate") {
-            log::error!("DEBUG: Found tracestate in headers: {}", tracestate);
-
+            crate::sp_debug!("Found tracestate header {}", tracestate);
+            
             // 解析 tracestate 中的 x-sp-traceparent
             for entry in tracestate.split(',') {
                 let entry = entry.trim();
                 if let Some(value) = entry.strip_prefix("x-sp-traceparent=") {
-                    log::error!("DEBUG: Found x-sp-traceparent in tracestate: {}", value);
+                    crate::sp_debug!("Found x-sp-traceparent entry in tracestate {}", value);
                     // 解析完整的 traceparent 格式: 00-trace_id-span_id-01
                     if let Some((trace_id, span_id)) = parse_traceparent(value) {
                         self.trace_id = trace_id;
                         self.parent_span_id = Some(span_id);
-                        log::error!("DEBUG: Successfully parsed trace context from x-sp-traceparent");
+                        crate::sp_debug!("Parsed trace context from x-sp-traceparent");
                         break;
                     }
                 }
@@ -114,34 +109,35 @@ impl SpanBuilder {
         // 如果没有从 tracestate 中解析到 trace context，尝试从标准的 traceparent 头部解析
         if self.trace_id.is_empty() {
             if let Some(traceparent) = headers.get("traceparent") {
-                log::error!("DEBUG: Found traceparent in headers: {}", traceparent);
+                crate::sp_debug!("Found traceparent header {}", traceparent);
                 // 解析标准的 traceparent 格式: 00-trace_id-span_id-01
                 if let Some((trace_id, span_id)) = parse_traceparent(traceparent) {
                     self.trace_id = trace_id;
                     self.parent_span_id = Some(span_id);
-                    log::error!("DEBUG: Successfully parsed trace context from traceparent");
+                    crate::sp_debug!("Parsed trace context from traceparent");
                 }
             }
         }
 
         // Get session ID from headers directly
-        log::error!("DEBUG: Looking for session_id in headers...");
+        crate::sp_debug!("Looking for session_id in headers");
         let session_id_found = headers.get("x-sp-session-id")
             .or_else(|| headers.get("sp_session_id"))
             .or_else(|| headers.get("x-session-id"));
 
         if let Some(session_id) = session_id_found {
-            log::error!("DEBUG: Found session_id in headers: '{}'", session_id);
+            let masked = if session_id.len() > 4 { "****" } else { "" };
+            crate::sp_debug!("Found session_id in headers: {}", masked);
             self.session_id = session_id.clone();
         } else {
-            log::error!("DEBUG: No session_id found in headers: {:?}", headers.keys().collect::<Vec<_>>());
+            crate::sp_debug!("No session_id found in headers");
         }
 
         // If no valid trace context found, generate new one
         if self.trace_id.is_empty() {
             self.trace_id = generate_trace_id();
         }
-
+        
         self
     }
 
@@ -213,7 +209,7 @@ impl SpanBuilder {
                 }),
             });
         }
-
+        
         // Add request headers as attributes
         for (key, value) in request_headers {
             if !should_skip_header(key) {
@@ -290,7 +286,7 @@ impl SpanBuilder {
         let span_id = self.current_span_id.clone();
         let mut attributes = Vec::new();
 
-        log::error!("DEBUG: service_name value: '{}'", self.service_name);
+        crate::sp_debug!("Building extract span: service_name set {}", self.service_name);
         attributes.push(KeyValue {
             key: "sp.service.name".to_string(),
             value: Some(AnyValue {
@@ -299,7 +295,7 @@ impl SpanBuilder {
         });
 
         // Add traffic direction attribute
-        log::error!("DEBUG: traffic_direction value: '{}'", self.traffic_direction);
+        crate::sp_debug!("Building extract span: traffic_direction set {}", self.traffic_direction);
         attributes.push(KeyValue {
             key: "sp.traffic.direction".to_string(),
             value: Some(AnyValue {
@@ -316,9 +312,8 @@ impl SpanBuilder {
         });
 
         // Add session ID attribute if present
-        log::error!("DEBUG: session_id value: '{}'", self.session_id);
         if !self.session_id.is_empty() {
-            log::error!("DEBUG: Adding session_id attribute");
+            crate::sp_debug!("Building extract span: session_id present: {}", self.session_id);
             attributes.push(KeyValue {
                 key: "sp.session.id".to_string(),
                 value: Some(AnyValue {
@@ -326,7 +321,7 @@ impl SpanBuilder {
                 }),
             });
         } else {
-            log::error!("DEBUG: session_id is empty, not adding attribute");
+            crate::sp_debug!("session_id is empty, not adding attribute");
         }
 
         // Add request headers
@@ -514,30 +509,30 @@ pub fn serialize_traces_data(traces_data: &TracesData) -> Result<Vec<u8>, prost:
 
 fn generate_trace_id() -> Vec<u8> {
     let mut trace_id = vec![0u8; 16];
-
+    
     // Use current timestamp as source of randomness
     let now_nanos = get_current_timestamp_nanos();
     let secs = (now_nanos / 1_000_000_000) as u64;
     let nanos = (now_nanos % 1_000_000_000) as u64;
-
+    
     // Fill first 8 bytes with seconds
     trace_id[0..8].copy_from_slice(&secs.to_be_bytes());
     // Fill last 8 bytes with nanoseconds
     trace_id[8..16].copy_from_slice(&nanos.to_be_bytes());
-
+    
     trace_id
 }
 
 pub fn generate_span_id() -> Vec<u8> {
     let mut span_id = vec![0u8; 8];
-
+    
     // Use current timestamp as source of randomness
     let now_nanos = get_current_timestamp_nanos();
-
+    
     // Add some variation to make it different from trace ID
     let varied_nanos = now_nanos ^ 0xCAFEBABE;
     span_id.copy_from_slice(&varied_nanos.to_be_bytes());
-
+    
     span_id
 }
 
@@ -546,10 +541,10 @@ fn parse_traceparent(traceparent: &str) -> Option<(Vec<u8>, Vec<u8>)> {
     if parts.len() != 4 {
         return None;
     }
-
+    
     let trace_id = hex_decode(parts[1])?;
     let span_id = hex_decode(parts[2])?;
-
+    
     Some((trace_id, span_id))
 }
 
@@ -557,7 +552,7 @@ fn hex_decode(hex: &str) -> Option<Vec<u8>> {
     if hex.len() % 2 != 0 {
         return None;
     }
-
+    
     let mut result = Vec::new();
     for i in (0..hex.len()).step_by(2) {
         if let Ok(byte) = u8::from_str_radix(&hex[i..i+2], 16) {
@@ -566,7 +561,7 @@ fn hex_decode(hex: &str) -> Option<Vec<u8>> {
             return None;
         }
     }
-
+    
     Some(result)
 }
 
@@ -593,8 +588,8 @@ pub fn get_current_timestamp_nanos() -> u64 {
 }
 
 fn should_skip_header(key: &str) -> bool {
-    matches!(key.to_lowercase().as_str(),
-        "authorization" | "cookie" | "set-cookie" |
+    matches!(key.to_lowercase().as_str(), 
+        "authorization" | "cookie" | "set-cookie" | 
         "x-api-key" | "x-auth-token" | "bearer" |
         "proxy-authorization"
     )
@@ -602,7 +597,7 @@ fn should_skip_header(key: &str) -> bool {
 
 fn is_text_content(headers: &HashMap<String, String>) -> bool {
     if let Some(content_type) = headers.get("content-type") {
-        content_type.starts_with("text/") ||
+        content_type.starts_with("text/") || 
         content_type.starts_with("application/json") ||
         content_type.starts_with("application/xml") ||
         content_type.starts_with("application/x-www-form-urlencoded")

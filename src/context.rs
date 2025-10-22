@@ -89,29 +89,24 @@ impl SpHttpContext {
         }
     }
 
-    fn dispatch_async_extraction_save(&mut self) -> Result<(), String> {
-        log::info!("SP: Starting async extraction save");
+    fn dispatch_async_extraction_save(&mut self) {
+        crate::sp_debug!("Starting async extraction save (host={:?}, path={:?})", self.url_host, self.url_path);
 
         // Check if session_id was parsed
         let has_session_id = self.span_builder.has_session_id();
-        log::info!(
-            "SP: Session ID found: {}, value: '{}'",
-            has_session_id,
-            self.span_builder.get_session_id()
-        );
+        crate::sp_debug!("Session ID present: {}", has_session_id);
 
         // If no session_id found, force trace upload for isolation
         if !has_session_id {
-            log::info!("SP: No session ID found, forcing trace upload for isolation");
+            crate::sp_debug!("No session ID found, forcing trace upload for isolation");
         } else {
             // Check collection rules
             if !self.should_collect_by_rules(&self.config, &self.request_headers) {
-                log::info!("SP: Data extraction skipped based on collection rules");
-                return Err("Data collection skipped based on collection rules".to_string());
+                crate::sp_debug!("Data extraction skipped based on collection rules");
             }
         }
 
-        log::info!("SP: Storing agent data asynchronously");
+        crate::sp_debug!("Storing agent data asynchronously (backend={})", self.config.sp_backend_url);
 
         // Create extract span using references to avoid cloning
         let traces_data = self.span_builder.create_extract_span(
@@ -125,8 +120,13 @@ impl SpHttpContext {
         );
 
         // Serialize to protobuf
-        let otel_data = serialize_traces_data(&traces_data)
-            .map_err(|e| format!("Serialization error: {}", e))?;
+        let otel_data = match serialize_traces_data(&traces_data) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                crate::sp_error!("Serialization error: {}", e);
+                return;
+            }
+        };
 
         // Get backend authority from configured URL
         let authority = get_backend_authority(&self.config.sp_backend_url);
@@ -154,23 +154,21 @@ impl SpHttpContext {
             timeout,
         ) {
             Ok(call_id) => {
-                log::info!("SP Extraction: HTTP call dispatched successfully!");
+                crate::sp_info!("Extraction: HTTP call dispatched successfully (call_id={})", call_id);
                 self.pending_save_call_token = Some(call_id);
-                Ok(())
             }
             Err(status) => {
                 let error_msg = format!(
                     "SP Extraction: Failed to dispatch HTTP call, status: {:?}",
                     status
                 );
-                log::error!("{}", error_msg);
-                Err(error_msg)
+                crate::sp_error!("{}", error_msg);
             }
         }
     }
 
     fn inject_trace_context_headers(&mut self) {
-        log::debug!("SP: *** INJECT_TRACE_CONTEXT_HEADERS CALLED ***");
+        crate::sp_debug!("inject_trace_context_headers called (trace_id={}, span_id={})", self.span_builder.get_trace_id_hex(), self.span_builder.get_current_span_id_hex());
 
         // Generate trace context
         let current_span_id_hex = self.span_builder.get_current_span_id_hex();
@@ -218,7 +216,7 @@ impl SpHttpContext {
 
         // Check response headers for traceparent
         if let Some(traceparent) = self.response_headers.get("traceparent") {
-            log::info!("SP: Found traceparent in response: {}", traceparent);
+            crate::sp_debug!("Found traceparent in response {}", traceparent);
             self.propagate_trace_context_to_response();
         }
     }
@@ -227,7 +225,7 @@ impl SpHttpContext {
         // Generate a new span ID for the response
         let span_id = crate::otel::generate_span_id();
         let traceparent = self.span_builder.generate_traceparent(&span_id);
-        log::info!("SP: Propagating traceparent to response: {}", traceparent);
+        crate::sp_debug!("Propagating traceparent to response {}", traceparent);
         let _ = self.add_http_response_header("traceparent", &traceparent);
     }
 }
@@ -253,11 +251,7 @@ impl Context for SpHttpContext {
         body_size: usize,
         _num_trailers: usize,
     ) {
-        log::info!(
-            "SP: *** HTTP CALL RESPONSE RECEIVED *** token: {}, body_size: {}",
-            token_id,
-            body_size
-        );
+        crate::sp_debug!("HTTP call response received: token={}, body_size={}", token_id, body_size);
 
         // Get response status
         let status_code = self
@@ -276,13 +270,13 @@ impl Context for SpHttpContext {
         // Check if this is the response to our async save call
         if let Some(pending_save_token) = self.pending_save_call_token {
             if pending_save_token == token_id {
-                log::info!("SP: *** PROCESSING ASYNC SAVE RESPONSE ***");
+                crate::sp_debug!("Processing async save response (status_code={})", status_code);
                 self.pending_save_call_token = None;
 
                 if status_code >= 200 && status_code < 300 {
-                    log::info!("SP: Async save completed successfully (status: {})", status_code);
+                    crate::sp_info!("Async save completed (status: {})", status_code);
                 } else {
-                    log::warn!("SP: Async save failed with status: {}", status_code);
+                    crate::sp_error!("Async save failed with status: {}", status_code);
                 }
                 return;
             }
@@ -291,7 +285,7 @@ impl Context for SpHttpContext {
         // Check if this is the response to our injection lookup call
         if let Some(pending_token) = self.pending_inject_call_token {
             if pending_token == token_id {
-                log::info!("SP: Processing injection lookup response");
+                crate::sp_debug!("Processing injection lookup response (status_code={})", status_code);
                 self.pending_inject_call_token = None;
 
                 if status_code == 200 && body_size > 0 {
@@ -318,7 +312,7 @@ impl Context for SpHttpContext {
                             return;
                         }
                         _ => {
-                            log::info!("SP: No injection data found");
+                            crate::sp_debug!("No injection data found");
                         }
                     }
                 }
@@ -338,12 +332,12 @@ impl HttpContext for SpHttpContext {
         }
         
         let traffic_direction = crate::traffic::TrafficAnalyzer::detect_traffic_direction(self);
-        log::debug!("\nSP: {} request headers callback invoked", traffic_direction);
+        crate::sp_debug!("{} request headers callback invoked", traffic_direction);
         
         // Get initial request headers
         let mut initial_headers = HashMap::new();
         for (key, value) in self.get_http_request_headers() {
-            log::debug!("SP: on_http_request_headers Request: {}: {}", key, value);
+            crate::sp_debug!("on_http_request_headers request header: {}: {}", key, value);
             initial_headers.insert(key, value);
         }
 
@@ -355,7 +349,7 @@ impl HttpContext for SpHttpContext {
         
         // Check if from istio-ingressgateway, skip if so
         if self.is_from_ingressgateway {
-            log::debug!("SP: Skipping processing for traffic from istio-ingressgateway");
+            crate::sp_debug!("Skipping processing for traffic from istio-ingressgateway");
             return Action::Continue;
         }
 
@@ -386,7 +380,7 @@ impl HttpContext for SpHttpContext {
                     return Action::Pause;
                 }
                 Err(e) => {
-                    log::error!("SP Injection: Injection lookup error: {}, continuing", e);
+                    crate::sp_error!("Injection lookup error: {}, continuing", e);
                 }
             }
         }
@@ -411,7 +405,7 @@ impl HttpContext for SpHttpContext {
                     return Action::Pause;
                 }
                 Err(e) => {
-                    log::error!("SP Injection: Injection lookup error: {}, continuing", e);
+                    crate::sp_error!("Injection lookup error: {}, continuing", e);
                 }
             }
         }
@@ -420,7 +414,7 @@ impl HttpContext for SpHttpContext {
     }
 
     fn on_http_response_headers(&mut self, num_headers: usize, end_of_stream: bool) -> Action {
-        log::debug!("SP: proxied response headers - num_headers: {}, end_of_stream: {}", num_headers, end_of_stream);
+        crate::sp_debug!("proxied response headers - num_headers: {}, end_of_stream: {}", num_headers, end_of_stream);
         
         if self.is_from_ingressgateway || self.injected {
             return Action::Continue;
@@ -428,7 +422,7 @@ impl HttpContext for SpHttpContext {
 
         // Skip header processing if no headers are expected
         if num_headers == 0 {
-            log::debug!("SP: No response headers to process, skipping header capture");
+            crate::sp_debug!("No response headers to process, skipping header capture");
             return Action::Continue;
         }
 
@@ -440,11 +434,16 @@ impl HttpContext for SpHttpContext {
         // Extract and propagate trace context
         self.extract_and_propagate_trace_context_impl();
 
+        // If there's no response body, perform async extraction save now, fire and forget
+        if end_of_stream {
+            self.dispatch_async_extraction_save();   
+        }
+
         Action::Continue
     }
 
     fn on_http_response_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
-        log::debug!("SP: proxied response body - body_size: {}, end_of_stream: {}", body_size, end_of_stream);
+        crate::sp_debug!("proxied response body - body_size: {}, end_of_stream: {}", body_size, end_of_stream);
 
         if self.is_from_ingressgateway || self.injected {
             return Action::Continue;
@@ -457,16 +456,9 @@ impl HttpContext for SpHttpContext {
 
         if end_of_stream {
             if let Some(status) = self.response_headers.get(":status") {
-                log::info!("SP: Processing response (status: {})", status);
-                match self.dispatch_async_extraction_save() {
-                    Ok(()) => {
-                        log::info!("SP: Async extraction save dispatched successfully");
-                    }
-                    Err(e) => {
-                        log::error!("SP: Failed to store agent: {}", e);
-                    }
-                }
-            }
+                crate::sp_debug!("Processing response (status: {})", status);
+                self.dispatch_async_extraction_save();
+            }   
         }
 
         Action::Continue

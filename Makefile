@@ -1,5 +1,12 @@
 # SP-Istio Agent Makefile
-.PHONY: help build test clean push deploy status logs install-deps check-deps
+.PHONY: help build test clean push deploy status logs check-deps \
+	cluster-up cluster-down docker-build-local \
+	deploy-demo forward quickstart docker-build docker-push version \
+	apply-wasm deploy-wasm-http copy-wasm-http use-wasm-http dev-quickstart \
+	dev-setup dev-reload
+
+# Additional phony targets
+.PHONY: check-deps-build check-deps-k8s
 
 # Configuration
 BINARY_NAME := sp_istio_agent
@@ -7,6 +14,10 @@ WASM_TARGET := wasm32-unknown-unknown
 BUILD_DIR := target/$(WASM_TARGET)/release
 WASM_FILE := $(BUILD_DIR)/$(BINARY_NAME).wasm
 HASH_FILE := $(WASM_FILE).sha256
+
+# Kind / Cluster configuration
+CLUSTER_NAME := sp-demo-cluster
+NAMESPACE := default
 
 # Docker configuration
 REGISTRY := softprobe
@@ -41,20 +52,28 @@ endef
 
 # Default target
 help: ## Show this help message
-	@echo "SP-Istio Agent Build System"
-	@echo "=========================="
+	@echo "SP-Istio Agent - Local Development & Testing"
+	@echo "============================================"
 	@echo ""
 	@echo "Current version: $(VERSION)"
 	@echo ""
 	@echo "Available targets:"
-	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ { printf "  %-15s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ { printf "  %-20s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
-check-deps: ## Check if required dependencies are installed
-	$(call print_info,"Checking dependencies...")
+check-deps-build: ## Check build-only dependencies (used by CI/build)
+	$(call print_info,"Checking build dependencies...")
 	@command -v cargo >/dev/null || (echo "$(RED)❌ Rust/Cargo not found. Install from https://rustup.rs/$(RESET)" >&2 && exit 1)
-	@command -v kubectl >/dev/null || (echo "$(YELLOW)⚠️  kubectl not found. Install for Kubernetes deployment$(RESET)")
 	@rustup target list --installed | grep -q $(WASM_TARGET) || (echo "$(BLUE)ℹ️  Installing WASM target...$(RESET)" && rustup target add $(WASM_TARGET))
-	$(call print_success,"Dependencies check completed")
+	$(call print_success,"Build dependencies check completed")
+
+check-deps-k8s: ## Check Kubernetes/Istio tooling (needed for local cluster workflows)
+	$(call print_info,"Checking Kubernetes/Istio dependencies...")
+	@command -v kubectl >/dev/null || (echo "$(RED)❌ kubectl not found. Install: brew install kubectl$(RESET)" >&2 && exit 1)
+	@command -v kind >/dev/null || (echo "$(RED)❌ kind not found. Install: brew install kind$(RESET)" >&2 && exit 1)
+	@command -v istioctl >/dev/null || (echo "$(RED)❌ istioctl not found. Install: brew install istioctl$(RESET)" >&2 && exit 1)
+	$(call print_success,"Kubernetes/Istio dependencies check completed")
+
+check-deps: check-deps-build check-deps-k8s ## Check all dependencies (build + Kubernetes/Istio)
 
 clean: ## Clean build artifacts
 	$(call print_info,"Cleaning build artifacts...")
@@ -62,13 +81,12 @@ clean: ## Clean build artifacts
 	@rm -f $(HASH_FILE)
 	$(call print_success,"Clean completed")
 
-build: check-deps ## Build WASM binary
+build: check-deps-build ## Build WASM binary
 	$(call print_info,"Building WASM binary...")
 	@cargo build --target $(WASM_TARGET) --release
 	@if [ -f "$(WASM_FILE)" ]; then \
-		echo "$(GREEN)✅ WASM binary built: $(WASM_FILE)$(RESET)"; \
-		$(MAKE) hash; \
-		$(MAKE) update-configs; \
+			echo "$(GREEN)✅ WASM binary built: $(WASM_FILE)$(RESET)"; \
+			$(MAKE) hash; \
 	else \
 		echo "$(RED)❌ Build failed!$(RESET)"; \
 		exit 1; \
@@ -128,40 +146,86 @@ docker-push: docker-build ## Build and push Docker images (auto-versioned from C
 
 push: docker-push ## Alias for docker-push
 
-install-local: build ## Install plugin to local Kind cluster
-	$(call print_info,"Installing to local cluster...")
-	@kubectl apply -f deploy/minimal.yaml
-	$(call print_success,"Plugin installed to cluster")
+# ===== Local Kind Cluster Workflow (no registry push) =====
 
-uninstall-local: ## Remove plugin from local Kind cluster
-	$(call print_info,"Removing from local cluster...")
-	@kubectl delete -f deploy/minimal.yaml --ignore-not-found=true
-	$(call print_success,"Plugin removed from cluster")
+cluster-up: check-deps ## Create Kind cluster with Istio and dependencies
+	$(call print_info,"Setting up local Kind cluster $(CLUSTER_NAME)...")
+	@if kind get clusters | grep -q "$(CLUSTER_NAME)"; then \
+		echo "$(YELLOW)⚠️  Cluster $(CLUSTER_NAME) already exists$(RESET)"; \
+	else \
+		./scripts/cluster-setup.sh; \
+		echo "$(GREEN)✅ Cluster created: $(CLUSTER_NAME)$(RESET)"; \
+	fi
 
-cluster-setup: ## Set up development cluster
-	$(call print_info,"Setting up development cluster...")
-	@./scripts/cluster-setup.sh
+cluster-down: ## Delete Kind cluster
+	$(call print_info,"Deleting Kind cluster $(CLUSTER_NAME)...")
+	@kind delete cluster --name $(CLUSTER_NAME)
+	$(call print_success,"Cluster deleted")
+
+docker-build-local: build ## Build Docker image for local Kind testing
+	$(call print_info,"Building local Docker image...")
+	@HASH=$$(cat $(HASH_FILE)); \
+	docker build --platform linux/amd64 --build-arg WASM_SHA256=$$HASH \
+	  -t $(WASM_IMAGE):$(VERSION)-local -f Dockerfile .
+	$(call print_success,"Local Docker image built: $(WASM_IMAGE):$(VERSION)-local")
 
 deploy-demo: ## Deploy demo applications
 	$(call print_info,"Deploying demo applications...")
-	@./scripts/deploy-demo-apps.sh
+	@kubectl apply -f examples/travel/apps.yaml
+	$(call print_success,"Demo applications deployed")
 
-install-plugin: ## Install WASM plugin to cluster
-	$(call print_info,"Installing WASM plugin...")
-	@./scripts/install-wasm-plugin.sh
+forward: ## Start port forwarding to access demo (Ctrl+C to stop)
+	$(call print_info,"Starting port forwarding on 8080...")
+	@kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80
 
-start-forwarding: ## Start port forwarding
-	$(call print_info,"Starting port forwarding...")
-	@./scripts/start-port-forwarding.sh
+quickstart: cluster-up deploy-demo ## Complete local setup (Kind + local image)
+	$(call print_success,"Quickstart completed. Run 'make forward' and open http://localhost:8080")
 
-cleanup: ## Clean up development environment
-	$(call print_info,"Cleaning up environment...")
-	@./scripts/cleanup.sh
+apply-wasm: ## Apply WasmPlugin and supporting manifests
+	$(call print_info,"Applying WasmPlugin manifests...")
+	@kubectl apply -f deploy/minimal.yaml
+	$(call print_success,"WasmPlugin resources applied")
 
-dev-setup: cluster-setup deploy-demo install-plugin start-forwarding ## Complete development setup
-	$(call print_success,"Development environment ready!")
-	$(call print_info,"Demo apps: http://localhost:8080 and http://localhost:8081")
-	$(call print_info,"Softprobe UI: https://o.softprobe.ai")
+deploy-wasm-http: ## Deploy HTTP server pod to serve local WASM file
+	$(call print_info,"Deploying local WASM HTTP server...")
+	@kubectl apply -f deploy/dev/local-wasm-http-server.yaml
+	$(call print_info,"Waiting for sp-wasm-http pod to be ready...")
+	@kubectl -n istio-system rollout status deploy/sp-wasm-http --timeout=120s || true
+	$(call print_success,"WASM HTTP server deployed")
+
+copy-wasm-http: build ## Copy built WASM into the HTTP server pod
+	$(call print_info,"Copying WASM into HTTP server pod...")
+	@POD=$$(kubectl -n istio-system get pod -l app=sp-wasm-http -o jsonpath='{.items[0].metadata.name}'); \
+	if [ -z "$$POD" ]; then echo "$(RED)❌ sp-wasm-http pod not found$(RESET)"; exit 1; fi; \
+	kubectl -n istio-system cp $(WASM_FILE) $$POD:/data/plugin.wasm
+	$(call print_success,"WASM copied to HTTP server")
+
+use-wasm-http: ## Configure WasmPlugins to load from in-cluster HTTP server
+	$(call print_info,"Patching WasmPlugins to use HTTP URL...")
+	@kubectl -n istio-system patch wasmplugin sp-istio-agent-client --type=json -p='[{"op":"replace","path":"/spec/url","value":"http://sp-wasm-http.istio-system.svc.cluster.local/plugin.wasm"}]'
+	@kubectl -n istio-system patch wasmplugin sp-istio-agent-server --type=json -p='[{"op":"replace","path":"/spec/url","value":"http://sp-wasm-http.istio-system.svc.cluster.local/plugin.wasm"}]'
+	$(call print_success,"WasmPlugins updated to HTTP URL")
+
+dev-quickstart: cluster-down cluster-up apply-wasm deploy-wasm-http copy-wasm-http use-wasm-http deploy-demo ## Recreate cluster and use HTTP-served WASM
+	$(call print_info,"Restarting sidecars to reload WASM...")
+	@kubectl -n istio-system rollout restart deploy istio-ingressgateway || true
+	@kubectl -n default rollout restart deploy demo-ota demo-airline || true
+	$(call print_info,"Run `make forward` to start port forwarding on 8080...")
+
+dev-setup: apply-wasm deploy-wasm-http use-wasm-http ## One-time setup to enable HTTP-served WASM
+	$(call print_success,"Development setup completed. Use 'make dev-reload' for fast reloads")
+
+dev-reload: copy-wasm-http ## Build, copy, and hot-reload WASM via cache-busting WasmPlugin URL
+	$(call print_info,"Reloading WASM by cache-busting WasmPlugin URLs...")
+	@TS=$$(date +%s); \
+	kubectl -n istio-system patch wasmplugin sp-istio-agent-client \
+	  --type=json -p='[{"op":"replace","path":"/spec/url","value":"http://sp-wasm-http.istio-system.svc.cluster.local/plugin.wasm?v='"$$TS"'"}]'; \
+	kubectl -n istio-system patch wasmplugin sp-istio-agent-server \
+	  --type=json -p='[{"op":"replace","path":"/spec/url","value":"http://sp-wasm-http.istio-system.svc.cluster.local/plugin.wasm?v='"$$TS"'"}]'
+	$(call print_info,"Restarting ingressgateway to ensure WASM is reloaded...")
+	@kubectl -n istio-system rollout restart deploy/istio-ingressgateway || true
+	@kubectl -n istio-system rollout status  deploy/istio-ingressgateway --timeout=180s || true
+	$(call print_success,"WASM reloaded. You can now send traffic and view logs")
 
 version: ## Show current version from Cargo.toml
 	@echo "$(GREEN)Current version: $(VERSION)$(RESET)"
@@ -169,15 +233,15 @@ version: ## Show current version from Cargo.toml
 status: ## Check deployment status
 	$(call print_info,"Checking deployment status...")
 	@kubectl get wasmplugin -n istio-system 2>/dev/null || $(call print_warning,"No WASM plugins found")
-	@kubectl get pods -l app=demo-ota 2>/dev/null || $(call print_warning,"Demo apps not found")
+	@kubectl get pods -n $(NAMESPACE) 2>/dev/null || $(call print_warning,"No pods found in $(NAMESPACE)")
 
 logs: ## View plugin logs
 	$(call print_info,"Viewing plugin logs...")
-	@POD=$$(kubectl get pod -l app=demo-ota -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
+	@POD=$$(kubectl get pod -n $(NAMESPACE) -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
 	if [ -n "$$POD" ]; then \
-		kubectl logs $$POD -c istio-proxy | grep "SP" || echo "$(YELLOW)⚠️  No SP logs found$(RESET)"; \
+		kubectl logs $$POD -n $(NAMESPACE) -c istio-proxy || echo "$(YELLOW)⚠️  No SP logs found$(RESET)"; \
 	else \
-		echo "$(YELLOW)⚠️  No demo pods found$(RESET)"; \
+		echo "$(YELLOW)⚠️  No pods found in namespace $(NAMESPACE)$(RESET)"; \
 	fi
 
 test-logs: ## View logs from test containers
@@ -187,6 +251,3 @@ test-logs: ## View logs from test containers
 # Convenience aliases
 all: build ## Build everything
 rebuild: clean build ## Clean and build
-dev: dev-setup ## Alias for dev-setup
-install: install-local ## Alias for install-local
-uninstall: uninstall-local ## Alias for uninstall-local

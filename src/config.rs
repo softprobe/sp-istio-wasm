@@ -89,7 +89,7 @@ impl Config {
     fn parse_backend_url(&mut self, config_json: &serde_json::Value) {
         if let Some(backend_url) = config_json.get("sp_backend_url").and_then(|v| v.as_str()) {
             self.sp_backend_url = backend_url.to_string();
-            log::info!("SP: Configured backend URL: {}", self.sp_backend_url);
+            crate::sp_info!("Configured backend URL: {}", self.sp_backend_url);
         }
     }
 
@@ -99,24 +99,22 @@ impl Config {
             .and_then(|v| v.as_str())
         {
             self.traffic_direction = Some(direction.to_string());
-            log::info!(
-                "SP: Configured traffic direction: {:?}",
-                self.traffic_direction
-            );
+            crate::sp_info!("Configured traffic direction: {:?}", self.traffic_direction);
         }
     }
 
     fn parse_service_name(&mut self, config_json: &serde_json::Value) {
         if let Some(service_name) = config_json.get("service_name").and_then(|v| v.as_str()) {
             self.service_name = service_name.to_string();
-            log::info!("SP: Configured service name: {}", self.service_name);
+            crate::sp_info!("Configured service name: {}", self.service_name);
         }
     }
 
     fn parse_api_key(&mut self, config_json: &serde_json::Value) {
         if let Some(api_key) = config_json.get("api_key").and_then(|v| v.as_str()) {
             self.api_key = api_key.to_string();
-            log::info!("SP: Configured API key: {}", self.api_key);
+            let masked = if self.api_key.len() > 4 { "****" } else { "" };
+            crate::sp_info!("API key configured: {}", masked);
         }
     }
 
@@ -169,7 +167,7 @@ impl Config {
     fn create_collection_rules(&mut self, server_paths: Vec<String>, client_configs: Vec<(String, Vec<String>)>) {
         // Create rules for each server path
         for server_path in server_paths {
-            log::info!("SP: Added server collection rule - serverPath: {}", server_path);
+            crate::sp_info!("Added server collection rule: {}", server_path);
             self.collection_rules.push(CollectionRule {
                 http: HttpCollectionRule {
                     server: ServerConfig {
@@ -182,10 +180,7 @@ impl Config {
 
         // Create rules for each client config
         for (client_host, client_paths) in &client_configs {
-            log::info!(
-                "SP: Added client collection rule - clientHost: {}, clientPaths: {:?}",
-                client_host, client_paths
-            );
+            crate::sp_info!("Added client collection rule: host={}, paths={:?}", client_host, client_paths);
             self.collection_rules.push(CollectionRule {
                 http: HttpCollectionRule {
                     server: ServerConfig {
@@ -207,10 +202,7 @@ impl Config {
                     let (host_patterns, path_patterns) = self.extract_exemption_patterns(exemption_entry);
                     
                     if !path_patterns.is_empty() {
-                        log::info!(
-                            "SP: Added exemption rule - hostPatterns: {:?}, pathPatterns: {:?}",
-                            host_patterns, path_patterns
-                        );
+                        crate::sp_info!("Added exemption rule: hostPatterns={:?}, pathPatterns={:?}", host_patterns, path_patterns);
                         self.exemption_rules.push(ExemptionRule {
                             host_patterns,
                             path_patterns,
@@ -221,10 +213,7 @@ impl Config {
         } else {
             // Add default exemption rule if none configured
             let default_rule = ExemptionRule::default();
-            log::info!(
-                "SP: Added default exemption rule - hostPatterns: {:?}, pathPatterns: {:?}",
-                default_rule.host_patterns, default_rule.path_patterns
-            );
+            crate::sp_info!("Added default exemption rule: pathPatterns={:?}", default_rule.path_patterns);
             self.exemption_rules.push(default_rule);
         }
     }

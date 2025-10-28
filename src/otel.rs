@@ -70,12 +70,12 @@ impl SpanBuilder {
         self.api_key = api_key;
         self
     }
-    
+
     /// Check if session_id is present and not empty
     pub fn has_session_id(&self) -> bool {
         !self.session_id.is_empty()
     }
-    
+
     /// Get trace_id as hex string
     pub fn get_current_span_id_hex(&self) -> String {
         self.current_span_id.iter().map(|b| format!("{:02x}", b)).collect::<String>()
@@ -221,7 +221,7 @@ impl SpanBuilder {
                 });
             }
         }
-        
+
         // Add url attributes if available
         if let Some(path) = url_path {
             attributes.push(KeyValue {
@@ -248,7 +248,7 @@ impl SpanBuilder {
                 use base64::{Engine as _, engine::general_purpose};
                 general_purpose::STANDARD.encode(request_body)
             };
-            
+
             attributes.push(KeyValue {
                 key: "http.request.body".to_string(),
                 value: Some(AnyValue {
@@ -256,7 +256,7 @@ impl SpanBuilder {
                 }),
             });
         }
-        
+
         let span = Span {
             trace_id: self.trace_id.clone(),
             span_id,
@@ -269,7 +269,7 @@ impl SpanBuilder {
             flags: 0,
             ..Default::default()
         };
-        
+
         self.create_traces_data(span)
     }
 
@@ -303,14 +303,6 @@ impl SpanBuilder {
             }),
         });
 
-        // Add span type attribute
-        attributes.push(KeyValue {
-            key: "span.type".to_string(),
-            value: Some(AnyValue {
-                value: Some(any_value::Value::StringValue("sp-envoy-proxy".to_string())),
-            }),
-        });
-
         // Add extract span type attribute
         attributes.push(KeyValue {
             key: "sp.span.type".to_string(),
@@ -318,19 +310,6 @@ impl SpanBuilder {
                 value: Some(any_value::Value::StringValue("extract".to_string())),
             }),
         });
-
-        // Add API key attribute if present
-        if !self.api_key.is_empty() {
-            crate::sp_debug!("Building extract span: api_key present");
-            attributes.push(KeyValue {
-                key: "sp.api.key".to_string(),
-                value: Some(AnyValue {
-                    value: Some(any_value::Value::StringValue(self.api_key.clone())),
-                }),
-            });
-        } else {
-            crate::sp_debug!("api_key is empty, not adding attribute");
-        }
 
         // Add session ID attribute if present
         if !self.session_id.is_empty() {
@@ -460,14 +439,37 @@ impl SpanBuilder {
         } else {
             self.service_name.clone()
         };
+        let mut attributes = Vec::new();
+
+        log::info!("DEBUG: api_key value: '{}'", self.api_key);
+        if !self.api_key.is_empty() {
+            log::error!("DEBUG: Adding api_key attribute");
+            attributes.push(KeyValue {
+                key: "sp.api.key".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(self.api_key.clone())),
+                }),
+            });
+        } else {
+            log::error!("DEBUG: api_key is empty, not adding attribute");
+        }
+
+        attributes.push(KeyValue {
+            key: "service.name".to_string(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue(service_name)),
+            }),
+        });
+
+        attributes.push(KeyValue {
+            key: "sp.resource.type".to_string(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue("sp-envoy-proxy".to_string())),
+            }),
+        });
 
         let resource = Resource {
-            attributes: vec![KeyValue {
-                key: "service.name".to_string(),
-                value: Some(AnyValue {
-                    value: Some(any_value::Value::StringValue(service_name)),
-                }),
-            }],
+            attributes,
             dropped_attributes_count: 0,
             entity_refs: vec![],
         };
@@ -491,7 +493,7 @@ impl SpanBuilder {
         let trace_id_hex = hex_encode(&self.trace_id);
         let span_id_hex = hex_encode(span_id);
         let trace_flags = "01"; // sampled flag set
-        
+
         format!("{}-{}-{}-{}", version, trace_id_hex, span_id_hex, trace_flags)
     }
 

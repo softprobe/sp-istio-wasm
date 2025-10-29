@@ -73,6 +73,8 @@ pub fn mask_string(value: &str, keep_prefix: usize, keep_suffix: usize) -> Strin
     let suffix: String = value.chars().skip(len - keep_suffix).collect();
     let mask_len = len - keep_prefix - keep_suffix;
 
+   // crate::sp_debug!("Masked string body result {})", format!("{}{}{}", prefix, "*".repeat(mask_len), suffix));
+
     format!("{}{}{}", prefix, "*".repeat(mask_len), suffix)
 }
 
@@ -103,7 +105,7 @@ pub fn mask_json_body(json_str: &str, config: &MaskingConfig) -> String {
             }).to_string();
         }
     }
-
+  //  crate::sp_debug!("Masked json body result {})", result);
     result
 }
 

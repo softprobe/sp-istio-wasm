@@ -117,6 +117,7 @@ impl SpHttpContext {
             self.url_host.as_deref(),
             self.url_path.as_deref(),
             self.request_start_time,  // Pass the stored request start time
+            &self.config.masking,  // Pass masking configuration
         );
 
         // Serialize to protobuf

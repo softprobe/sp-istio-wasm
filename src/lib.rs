@@ -10,6 +10,7 @@ mod context;
 mod http_helpers;
 mod trace_context;
 mod logging;
+mod masking;
 
 use crate::config::Config;
 use crate::context::SpHttpContext;

@@ -24,6 +24,7 @@ prost = "0.12"
 log = "0.4"
 url = "2.5"
 regex = "1.5"
+lazy_static = "1.4"
 
 [build-dependencies]
 prost-build = "0.12"

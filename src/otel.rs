@@ -282,6 +282,7 @@ impl SpanBuilder {
         url_host: Option<&str>,
         url_path: Option<&str>,
         request_start_time: Option<u64>,  // Add request start time parameter
+        masking_config: &crate::config::MaskingConfig,  // Add masking config parameter
     ) -> TracesData {
         let span_id = self.current_span_id.clone();
         let mut attributes = Vec::new();
@@ -411,6 +412,10 @@ impl SpanBuilder {
                 }),
             });
         }
+
+        // Apply data masking before creating span
+        crate::sp_debug!("Applying data masking to span attributes");
+        crate::masking::mask_span_attributes(&mut attributes, masking_config);
 
         let span = Span {
             trace_id: self.trace_id.clone(),

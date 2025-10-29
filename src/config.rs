@@ -47,6 +47,40 @@ impl Default for ExemptionRule {
     }
 }
 
+/// Masking configuration for sensitive data
+#[derive(Debug, Clone)]
+pub struct MaskingConfig {
+    pub enabled: bool,
+    pub mask_request_headers: Vec<String>,
+    pub mask_response_headers: Vec<String>,
+    pub mask_request_body: bool,
+    pub mask_response_body: bool,
+    pub keep_prefix_length: usize,
+    pub keep_suffix_length: usize,
+}
+
+impl Default for MaskingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            mask_request_headers: vec![
+                "authorization".to_string(),
+                "cookie".to_string(),
+                "x-api-key".to_string(),
+                "x-auth-token".to_string(),
+            ],
+            mask_response_headers: vec![
+                "set-cookie".to_string(),
+                "authorization".to_string(),
+            ],
+            mask_request_body: true,
+            mask_response_body: true,
+            keep_prefix_length: 3,
+            keep_suffix_length: 4,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub sp_backend_url: String,
@@ -55,6 +89,7 @@ pub struct Config {
     pub collection_rules: Vec<CollectionRule>,
     pub exemption_rules: Vec<ExemptionRule>,
     pub api_key: String,
+    pub masking: MaskingConfig,
 }
 
 impl Default for Config {
@@ -66,6 +101,7 @@ impl Default for Config {
             collection_rules: vec![],
             exemption_rules: vec![],
             api_key: String::new(),
+            masking: MaskingConfig::default(),
         }
     }
 }
@@ -80,6 +116,7 @@ impl Config {
                 self.parse_api_key(&config_json);
                 self.parse_collection_rules(&config_json);
                 self.parse_exemption_rules(&config_json);
+                self.parse_masking(&config_json);
                 return true;
             }
         }
@@ -246,6 +283,62 @@ impl Config {
         }
 
         (host_patterns, path_patterns)
+    }
+
+    fn parse_masking(&mut self, config_json: &serde_json::Value) {
+        if let Some(masking_obj) = config_json.get("masking") {
+            self.masking.enabled = masking_obj
+                .get("enabled")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+
+            if let Some(request_headers) = masking_obj.get("maskRequestHeaders") {
+                if let Some(headers_array) = request_headers.as_array() {
+                    self.masking.mask_request_headers = headers_array
+                        .iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect();
+                }
+            }
+
+            if let Some(response_headers) = masking_obj.get("maskResponseHeaders") {
+                if let Some(headers_array) = response_headers.as_array() {
+                    self.masking.mask_response_headers = headers_array
+                        .iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect();
+                }
+            }
+
+            self.masking.mask_request_body = masking_obj
+                .get("maskRequestBody")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+
+            self.masking.mask_response_body = masking_obj
+                .get("maskResponseBody")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+
+            self.masking.keep_prefix_length = masking_obj
+                .get("keepPrefixLength")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(3) as usize;
+
+            self.masking.keep_suffix_length = masking_obj
+                .get("keepSuffixLength")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(4) as usize;
+
+            crate::sp_info!(
+                "Masking configured: enabled={}, request_body={}, response_body={}, prefix={}, suffix={}",
+                self.masking.enabled,
+                self.masking.mask_request_body,
+                self.masking.mask_response_body,
+                self.masking.keep_prefix_length,
+                self.masking.keep_suffix_length
+            );
+        }
     }
 }
 

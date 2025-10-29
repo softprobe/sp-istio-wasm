@@ -88,18 +88,18 @@ impl SpanBuilder {
     pub fn with_context(mut self, headers: &HashMap<String, String>) -> Self {
         // Extract trace context from tracestate x-sp-traceparent if present
         if let Some(tracestate) = headers.get("tracestate") {
-            crate::sp_debug!("Found tracestate header {}", tracestate);
+            log::error!("Found tracestate header {}", tracestate);
             
             // 解析 tracestate 中的 x-sp-traceparent
             for entry in tracestate.split(',') {
                 let entry = entry.trim();
                 if let Some(value) = entry.strip_prefix("x-sp-traceparent=") {
-                    crate::sp_debug!("Found x-sp-traceparent entry in tracestate {}", value);
+                    log::error!("Found x-sp-traceparent entry in tracestate {}", value);
                     // 解析完整的 traceparent 格式: 00-trace_id-span_id-01
                     if let Some((trace_id, span_id)) = parse_traceparent(value) {
                         self.trace_id = trace_id;
                         self.parent_span_id = Some(span_id);
-                        crate::sp_debug!("Parsed trace context from x-sp-traceparent");
+                        log::error!("Parsed trace context from x-sp-traceparent, trace_id: {}, span_id: {}, parent_span_id: {:?}", self.get_trace_id_hex(), self.get_current_span_id_hex(), self.parent_span_id);
                         break;
                     }
                 }

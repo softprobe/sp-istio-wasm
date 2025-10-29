@@ -16,6 +16,11 @@ else
     echo "✅ Kind cluster creation completed"
 fi
 
+# Switch to Kind cluster context
+echo "🔄 Switching to Kind cluster context..."
+kubectl config use-context kind-$CLUSTER_NAME
+echo "✅ Switched to kind-$CLUSTER_NAME context"
+
 # Check cluster connection
 echo "🔍 Checking cluster connection..."
 if ! kubectl cluster-info &> /dev/null; then

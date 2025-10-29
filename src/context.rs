@@ -1,7 +1,7 @@
 use proxy_wasm::traits::*;
 use proxy_wasm::types::*;
 use std::collections::HashMap;
-
+use log::log;
 use crate::config::Config;
 use crate::otel::{SpanBuilder, serialize_traces_data};
 use crate::headers::{detect_service_name, build_new_tracestate};
@@ -168,13 +168,14 @@ impl SpHttpContext {
     }
 
     fn inject_trace_context_headers(&mut self) {
-        crate::sp_debug!("inject_trace_context_headers called (trace_id={}, span_id={})", self.span_builder.get_trace_id_hex(), self.span_builder.get_current_span_id_hex());
+        
+        log::error!("inject_trace_context_headers called (trace_id={}, span_id={})", self.span_builder.get_trace_id_hex(), self.span_builder.get_current_span_id_hex());
 
         // Generate trace context
         let current_span_id_hex = self.span_builder.get_current_span_id_hex();
         let trace_id_hex = self.span_builder.get_trace_id_hex();
         let traceparent_value = format!("00-{}-{}-01", trace_id_hex, current_span_id_hex);
-
+        
         // Build new tracestate
         let new_tracestate = build_new_tracestate(&self.request_headers, &traceparent_value);
 
@@ -193,13 +194,19 @@ impl SpHttpContext {
         }
 
         // Update local cache
-        self.request_headers.insert("tracestate".to_string(), new_tracestate);
+        self.request_headers.insert("tracestate".to_string(), new_tracestate.clone());
+
+        // Log tracestate with error level
+         log::error!("Updated tracestate: {}", new_tracestate);
 
         // Handle x-sp-num header
         let current_sp_num = self.request_headers
             .get("x-sp-num")
             .and_then(|v| v.parse::<u32>().ok())
             .unwrap_or(0);
+        
+        // Log current_sp_num with error level
+        log::error!("Current x-sp-num: {}", current_sp_num);
         
         let new_sp_num = current_sp_num + 1;
         let new_sp_num_str = new_sp_num.to_string();
@@ -369,11 +376,9 @@ impl HttpContext for SpHttpContext {
             .with_api_key(api_key)
             .with_context(&initial_headers);
 
-        // Inject trace context headers
-        self.inject_trace_context_headers();
-
-        // If no body, perform injection lookup now
         if end_of_stream {
+             // Inject trace context headers
+            self.inject_trace_context_headers();
             match self.dispatch_injection_lookup() {
                 Ok(call_id) => {
                     self.pending_inject_call_token = Some(call_id);
@@ -399,6 +404,8 @@ impl HttpContext for SpHttpContext {
         }
 
         if end_of_stream {
+            // Inject trace context headers when body stream ends
+            self.inject_trace_context_headers();
             match self.dispatch_injection_lookup() {
                 Ok(call_id) => {
                     self.pending_inject_call_token = Some(call_id);

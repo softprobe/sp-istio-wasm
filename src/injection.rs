@@ -48,7 +48,7 @@ pub fn parse_otel_injection_response(response_body: &[u8]) -> Result<Option<Agen
 
     // Decode OTEL protobuf response
     let traces_data = TracesData::decode(response_body).map_err(|e| {
-        log::info!("SP: Protobuf decode failed: {}", e);
+        log::error!("SP: Protobuf decode failed: {}", e);
         format!("Serialization error: {}", e)
     })?;
 

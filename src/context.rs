@@ -168,7 +168,6 @@ impl SpHttpContext {
     }
 
     fn inject_trace_context_headers(&mut self) {
-        crate::sp_debug!("inject_trace_context_headers called (trace_id={}, span_id={})", self.span_builder.get_trace_id_hex(), self.span_builder.get_current_span_id_hex());
 
         // Generate trace context
         let current_span_id_hex = self.span_builder.get_current_span_id_hex();
@@ -189,11 +188,11 @@ impl SpHttpContext {
 
         if !has_traceparent {
             self.add_http_request_header("traceparent", &traceparent_value);
-            self.request_headers.insert("traceparent".to_string(), traceparent_value);
+            self.request_headers.insert("traceparent".to_string(), traceparent_value.clone());
         }
 
         // Update local cache
-        self.request_headers.insert("tracestate".to_string(), new_tracestate);
+        self.request_headers.insert("tracestate".to_string(), new_tracestate.clone());
 
         // Handle x-sp-num header
         let current_sp_num = self.request_headers
@@ -205,7 +204,8 @@ impl SpHttpContext {
         let new_sp_num_str = new_sp_num.to_string();
         
         self.add_http_request_header("x-sp-num", &new_sp_num_str);
-        self.request_headers.insert("x-sp-num".to_string(), new_sp_num_str);
+        self.request_headers.insert("x-sp-num".to_string(), new_sp_num_str.clone());
+        log::info!("inject_trace_context_headers: traceparent={}, x-sp-num={}", traceparent_value, new_sp_num_str);
     }
 
     fn extract_and_propagate_trace_context_impl(&mut self) {

@@ -30,7 +30,7 @@ fn log_span_details(traces_data: &crate::otel::TracesData) {
                     .map(|b| format!("{:02x}", b))
                     .collect::<String>();
 
-                log::error!(
+                log::info!(
                     "SP: Span[{}] - trace_id: {}, span_id: {}, parent_span_id: {}, name: {}",
                     i, trace_id_hex, span_id_hex, parent_span_id_hex, span.name
                 );
@@ -48,7 +48,7 @@ pub fn parse_otel_injection_response(response_body: &[u8]) -> Result<Option<Agen
 
     // Decode OTEL protobuf response
     let traces_data = TracesData::decode(response_body).map_err(|e| {
-        log::error!("SP: Protobuf decode failed: {}", e);
+        log::info!("SP: Protobuf decode failed: {}", e);
         format!("Serialization error: {}", e)
     })?;
 

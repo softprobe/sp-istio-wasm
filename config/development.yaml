@@ -14,8 +14,6 @@ spec:
     sp_backend_url: "https://dev.softprobe.ai"
     api_key: "dev-api-key-placeholder"
     
-    # Cache Configuration (shorter TTL for testing)
-    enable_inject: true
     cache_ttl_seconds: 300  # 5 minutes
     max_cache_size_mb: 50   # Smaller cache for dev
     

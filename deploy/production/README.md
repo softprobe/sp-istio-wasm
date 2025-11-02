@@ -67,7 +67,6 @@ Notes:
 
 Within `spec.pluginConfig`:
 - `sp_backend_url`: Softprobe backend URL (e.g., `https://o.softprobe.ai`)
-- `enable_inject`: enable response injection when the agent hits
 - `traffic_direction`: usually `outbound`
 - `service_name`, `api_key`: optional identification fields
 - `collectionRules.http.client`: filter which outbound traffic to record

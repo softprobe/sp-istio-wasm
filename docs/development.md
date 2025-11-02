@@ -250,7 +250,6 @@ wasm-objdump -h target/wasm32-unknown-unknown/release/sp_istio_agent.wasm
 pub struct PluginConfig {
     pub sp_backend_url: String,
     pub api_key: Option<String>,
-    pub enable_inject: bool,
     // Add new option here
     pub new_feature_enabled: Option<bool>,
 }

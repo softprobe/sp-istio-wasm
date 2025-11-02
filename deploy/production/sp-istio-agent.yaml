@@ -18,7 +18,6 @@ spec:
   pluginConfig:
     # Backend Configuration
     sp_backend_url: "https://o.softprobe.ai"
-    enable_inject: false  # Disable injection by default for safety
     traffic_direction: "outbound"  # Capture outbound HTTP calls by default
     
     # Collection Rules (empty = collect all traffic)
@@ -62,7 +61,6 @@ spec:
 #   phase: AUTHN
 #   pluginConfig:
 #     sp_backend_url: "https://o.softprobe.ai"
-#     enable_inject: false
 #     traffic_direction: "outbound"
 #     collectionRules:
 #       http:
@@ -87,7 +85,6 @@ spec:
 #   phase: AUTHN
 #   pluginConfig:
 #     sp_backend_url: "https://o.softprobe.ai"
-#     enable_inject: true  # Enable cache injection
 #     traffic_direction: "outbound"
 #     collectionRules:
 #       http:

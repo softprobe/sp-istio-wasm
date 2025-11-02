@@ -48,7 +48,6 @@ static_resources:
                               "service_name": "sp-istio-wasm-integration-test",
                               "sp_backend_url": "https://o.softprobe.ai",
                               "api_key": "test123",
-                              "enable_inject": false,
                               "collectionRules": {
                                 "http": {
                                   "server": [
@@ -112,7 +111,6 @@ static_resources:
                               "service_name": "sp-istio-wasm-integration-test",
                               "sp_backend_url": "https://o.softprobe.ai",
                               "api_key": "test123",
-                              "enable_inject": false,
                               "collectionRules": {
                                 "http": {
                                   "server": [],

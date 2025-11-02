@@ -75,7 +75,6 @@ spec:
   pluginConfig:
     sp_backend_url: "https://o.softprobe.ai"
     api_key: "your-api-key-here"
-    enable_inject: true
     traffic_direction: "outbound"
 ```
 
@@ -88,7 +87,6 @@ pluginConfig:
   api_key: "your-production-api-key"
   
   # Cache Configuration
-  enable_inject: true
   cache_ttl_seconds: 3600
   max_cache_size_mb: 100
   
@@ -123,7 +121,6 @@ pluginConfig:
 # config/development.yaml
 pluginConfig:
   sp_backend_url: "https://dev.softprobe.ai"
-  enable_inject: true
   enable_detailed_logging: true
   cache_ttl_seconds: 300  # 5 minutes
 ```
@@ -134,7 +131,6 @@ pluginConfig:
 # config/staging.yaml
 pluginConfig:
   sp_backend_url: "https://staging.softprobe.ai"
-  enable_inject: true
   enable_detailed_logging: false
   cache_ttl_seconds: 1800  # 30 minutes
 ```
@@ -145,7 +141,6 @@ pluginConfig:
 # config/production.yaml
 pluginConfig:
   sp_backend_url: "https://o.softprobe.ai"
-  enable_inject: true
   enable_detailed_logging: false
   cache_ttl_seconds: 3600  # 1 hour
   max_cache_size_mb: 200

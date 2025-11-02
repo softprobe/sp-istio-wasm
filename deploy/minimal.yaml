@@ -13,7 +13,6 @@ spec:
   pluginConfig:
     sp_backend_url: "https://o.softprobe.ai"
     api_key: "demo-ota-01"
-    enable_inject: false
     traffic_direction: "server"
     collectionRules:
       http:
@@ -36,7 +35,6 @@ spec:
   pluginConfig:
     sp_backend_url: "https://o.softprobe.ai"
     api_key: "demo-ota-01"
-    enable_inject: false
     traffic_direction: "client"
     collectionRules:
       http:

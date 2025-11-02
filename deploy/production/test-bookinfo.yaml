@@ -27,7 +27,6 @@ spec:
   pluginConfig:
     # Backend Configuration
     sp_backend_url: "https://o.softprobe.ai"
-    enable_inject: false  
     traffic_direction: "outbound"  # Back to outbound for real testing
     service_name: "productpage-test"  # Service name for tracking
     api_key: ""  # Empty API key for testing

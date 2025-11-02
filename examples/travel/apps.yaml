@@ -38,7 +38,7 @@ spec:
         fsGroup: 2000
       containers:
         - name: demo-ota
-          image:  docker.io/softprobe/sp-ota:v1.0.0
+          image: docker.io/softprobe/sp-ota:latest
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
@@ -47,7 +47,9 @@ spec:
                 - ALL
           env:
             - name: SERVER_PORT
-              value: "8080"           
+              value: "8080"
+            - name: AIRLINE_BASE_URL
+              value: "http://demo-airline:8081/airline-api/v1"
           resources:
             requests:
               memory: "1000Mi"
@@ -114,7 +116,7 @@ spec:
         fsGroup: 2000
       containers:
         - name: demo-airline
-          image: docker.io/softprobe/sp-airline:v1.0.0
+          image: docker.io/softprobe/sp-airline:latest
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
@@ -163,12 +165,12 @@ spec:
   selector:
     istio: ingressgateway
   servers:
-  - port:
-      number: 80
-      name: http
-      protocol: HTTP
-    hosts:
-    - "*"
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*"
 ---
 # Istio VirtualService
 apiVersion: networking.istio.io/v1beta1
@@ -178,41 +180,41 @@ metadata:
   namespace: default
 spec:
   hosts:
-  - "*"
+    - "*"
   gateways:
-  - demo-gateway
+    - demo-gateway
   http:
-  - match:
-    - headers:
-        host:
-          exact: ota.local
-    route:
-    - destination:
-        host: demo-ota
-        port:
-          number: 8080
-  - match:
-    - headers:
-        host:
-          exact: airline.local
-    route:
-    - destination:
-        host: demo-airline
-        port:
-          number: 8081
-  - match:
-    - uri:
-        prefix: "/airline-api"
-    route:
-    - destination:
-        host: demo-airline
-        port:
-          number: 8081
-  - match:
-    - uri:
-        prefix: "/"
-    route:
-    - destination:
-        host: demo-ota
-        port:
-          number: 8080
+    - match:
+        - headers:
+            host:
+              exact: ota.local
+      route:
+        - destination:
+            host: demo-ota
+            port:
+              number: 8080
+    - match:
+        - headers:
+            host:
+              exact: airline.local
+      route:
+        - destination:
+            host: demo-airline
+            port:
+              number: 8081
+    - match:
+        - uri:
+            prefix: "/airline-api"
+      route:
+        - destination:
+            host: demo-airline
+            port:
+              number: 8081
+    - match:
+        - uri:
+            prefix: "/"
+      route:
+        - destination:
+            host: demo-ota
+            port:
+              number: 8080

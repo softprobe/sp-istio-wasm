@@ -88,7 +88,7 @@ impl SpanBuilder {
     pub fn with_context(mut self, headers: &HashMap<String, String>) -> Self {
         // Extract trace context from tracestate x-sp-traceparent if present
         if let Some(tracestate) = headers.get("tracestate") {
-            crate::sp_debug!("Found tracestate header {}", tracestate);
+            crate::sp_info!("with_context Found tracestate header {}", tracestate);
             
             // 解析 tracestate 中的 x-sp-traceparent
             for entry in tracestate.split(',') {
@@ -441,9 +441,9 @@ impl SpanBuilder {
         };
         let mut attributes = Vec::new();
 
-        log::info!("DEBUG: api_key value: '{}'", self.api_key);
+        log::debug!("DEBUG: api_key value: '{}'", self.api_key);
         if !self.api_key.is_empty() {
-            log::error!("DEBUG: Adding api_key attribute");
+            log::debug!("DEBUG: Adding api_key attribute");
             attributes.push(KeyValue {
                 key: "sp.api.key".to_string(),
                 value: Some(AnyValue {
@@ -451,7 +451,7 @@ impl SpanBuilder {
                 }),
             });
         } else {
-            log::error!("DEBUG: api_key is empty, not adding attribute");
+            log::debug!("DEBUG: api_key is empty, not adding attribute");
         }
 
         attributes.push(KeyValue {

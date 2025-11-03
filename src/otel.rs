@@ -130,7 +130,9 @@ impl SpanBuilder {
             crate::sp_debug!("Found session_id in headers: {}", masked);
             self.session_id = session_id.clone();
         } else {
-            crate::sp_debug!("No session_id found in headers");
+            crate::sp_debug!("No session_id found in headers, generating new one");
+            self.session_id = generate_session_id();
+            crate::sp_debug!("Generated session_id: sp-session-****");
         }
 
         // If no valid trace context found, generate new one
@@ -163,14 +165,6 @@ impl SpanBuilder {
             key: "sp.service.name".to_string(),
             value: Some(AnyValue {
                 value: Some(any_value::Value::StringValue(service_name)),
-            }),
-        });
-
-        // Add span type attribute
-        attributes.push(KeyValue {
-            key: "span.type".to_string(),
-            value: Some(AnyValue {
-                value: Some(any_value::Value::StringValue("sp-envoy-proxy".to_string())),
             }),
         });
 
@@ -461,10 +455,11 @@ impl SpanBuilder {
             }),
         });
 
+        let resource_type_value = "sp-envoy-proxy".to_string();
         attributes.push(KeyValue {
             key: "sp.resource.type".to_string(),
             value: Some(AnyValue {
-                value: Some(any_value::Value::StringValue("sp-envoy-proxy".to_string())),
+                value: Some(any_value::Value::StringValue(resource_type_value.clone())),
             }),
         });
 
@@ -608,4 +603,30 @@ fn is_text_content(headers: &HashMap<String, String>) -> bool {
 
 fn hex_encode(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+fn generate_session_id() -> String {
+    // Generate a UUID-like session ID in the format: sp-session-f43fdfa5-3ab8-4548-895e-26a0c28ec54a
+    let mut uuid_bytes = vec![0u8; 16];
+    
+    // Use current timestamp as source of randomness
+    let now_nanos = get_current_timestamp_nanos();
+    let secs = (now_nanos / 1_000_000_000) as u64;
+    let nanos = (now_nanos % 1_000_000_000) as u64;
+    
+    // Fill first 8 bytes with seconds
+    uuid_bytes[0..8].copy_from_slice(&secs.to_be_bytes());
+    // Fill last 8 bytes with nanoseconds + some variation
+    let varied_nanos = nanos ^ 0xDEADBEEF;
+    uuid_bytes[8..16].copy_from_slice(&varied_nanos.to_be_bytes());
+    
+    // Format as UUID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    format!(
+        "sp-session-{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        uuid_bytes[0], uuid_bytes[1], uuid_bytes[2], uuid_bytes[3],
+        uuid_bytes[4], uuid_bytes[5],
+        uuid_bytes[6], uuid_bytes[7],
+        uuid_bytes[8], uuid_bytes[9],
+        uuid_bytes[10], uuid_bytes[11], uuid_bytes[12], uuid_bytes[13], uuid_bytes[14], uuid_bytes[15]
+    )
 }

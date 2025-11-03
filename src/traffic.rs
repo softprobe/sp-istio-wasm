@@ -5,7 +5,7 @@ use std::collections::HashMap;
 // use url::Url; // no longer needed here
 
 pub trait TrafficAnalyzer {
-    fn detect_traffic_direction(&self) -> String;
+    fn detect_traffic_direction(&self, config: &Config) -> String;
     fn is_from_istio_ingressgateway(&self) -> bool;
     fn should_collect_by_rules(&self, config: &Config, request_headers: &HashMap<String, String>) -> bool;
     fn is_exempted(&self, config: &Config, request_headers: &HashMap<String, String>) -> bool;
@@ -17,8 +17,64 @@ pub trait RequestHeadersAccess {
 }
 
 impl<T: Context> TrafficAnalyzer for T where T: RequestHeadersAccess {
-    fn detect_traffic_direction(&self) -> String {
-        // Method 1: Check listener direction
+    fn detect_traffic_direction(&self, config: &Config) -> String {
+        // Method 1: Use configured traffic direction if available
+        if let Some(ref direction) = config.traffic_direction {
+            crate::sp_debug!("Using configured traffic direction: {}", direction);
+            return match direction.as_str() {
+                "server" => "inbound".to_string(),
+                "client" => "outbound".to_string(),
+                _ => direction.clone(),
+            };
+        }
+
+        // Method 2: Check if this is client or server role
+        // Client (发起请求) → outbound, Server (接收请求) → inbound
+        
+        // Check if this is a client making outbound requests
+        if let Some(upstream_host) = self.get_context_property(vec!["upstream_host"]) {
+            if let Ok(host) = String::from_utf8(upstream_host) {
+                crate::sp_debug!("Detected upstream_host: {} → client role (outbound)", host);
+                return "outbound".to_string();
+            }
+        }
+
+        // Check cluster name for client/server role indication
+        if let Some(cluster_name) = self.get_context_property(vec!["cluster_name"]) {
+            if let Ok(cluster) = String::from_utf8(cluster_name) {
+                crate::sp_debug!("Detected cluster_name: {}", cluster);
+                if cluster.starts_with("outbound|") {
+                    crate::sp_debug!("Client role detected from cluster name → outbound");
+                    return "outbound".to_string();
+                } else if cluster.starts_with("inbound|") {
+                    crate::sp_debug!("Server role detected from cluster name → inbound");
+                    return "inbound".to_string();
+                }
+            }
+        }
+
+        // Log request protocol for debugging (but don't use it for direction detection)
+        if let Some(request_protocol) = self.get_context_property(vec!["request", "protocol"]) {
+            if let Ok(protocol) = String::from_utf8(request_protocol) {
+                crate::sp_debug!("Request protocol: {}", protocol);
+                // Note: HTTP protocol presence doesn't indicate traffic direction
+                // Both inbound and outbound traffic can have HTTP protocol info
+            }
+        }
+
+        // Check connection mTLS info for server role (more reliable than protocol)
+        if let Some(connection_mtls) = self.get_context_property(vec!["connection", "mtls"]) {
+            if let Ok(mtls_info) = String::from_utf8(connection_mtls) {
+                crate::sp_debug!("Connection mTLS info: {}", mtls_info);
+                // 如果有客户端证书信息，通常表示这是服务端接收请求
+                if mtls_info.contains("client") {
+                    crate::sp_debug!("Server role detected (has client cert info) → inbound");
+                    return "inbound".to_string();
+                }
+            }
+        }
+
+        // Method 2: Check listener direction
         if let Some(listener_direction) = self.get_context_property(vec!["listener_direction"]) {
             if let Ok(direction) = String::from_utf8(listener_direction) {
                 crate::sp_debug!("Detected listener_direction: {}", direction);
@@ -39,19 +95,7 @@ impl<T: Context> TrafficAnalyzer for T where T: RequestHeadersAccess {
             }
         }
 
-        // Method 3: Check cluster name pattern
-        if let Some(cluster_name) = self.get_context_property(vec!["cluster_name"]) {
-            if let Ok(cluster) = String::from_utf8(cluster_name) {
-                crate::sp_debug!("Detected cluster_name: {}", cluster);
-                if cluster.starts_with("inbound|") {
-                    return "inbound".to_string();
-                } else if cluster.starts_with("outbound|") {
-                    return "outbound".to_string();
-                }
-            }
-        }
-
-        // Method 4: Check by port range (source address)
+        // Method 3: Check by port range (source address)
         if let Some(downstream_local_address) = self.get_context_property(vec!["source", "address"]) {
             if let Ok(address) = String::from_utf8(downstream_local_address) {
                 crate::sp_debug!("Detected downstream address: {}", address);
@@ -70,12 +114,11 @@ impl<T: Context> TrafficAnalyzer for T where T: RequestHeadersAccess {
             return "inbound".to_string();
         }
 
-        if let Some(host) = self.get_request_header("host").or_else(|| self.get_request_header(":authority")) {
-            if !host.contains("localhost") && !host.contains("127.0.0.1") && !host.contains(".local") {
-                crate::sp_debug!("External host detected: {}, likely outbound traffic", host);
-                return "outbound".to_string();
-            }
-        }
+        // Note: host/authority header indicates the target service, not the source
+        // In SERVER mode, if we receive a request with host header, it's inbound traffic
+        // In CLIENT mode, if we're making a request to a host, it's outbound traffic
+        // Since we can't reliably determine client vs server role from headers alone,
+        // we should rely on other methods above rather than host header heuristics
 
         crate::sp_debug!("Could not determine traffic direction, using 'auto'");
         "auto".to_string()

@@ -331,7 +331,7 @@ impl HttpContext for SpHttpContext {
             self.request_start_time = Some(crate::otel::get_current_timestamp_nanos());
         }
         
-        let traffic_direction = crate::traffic::TrafficAnalyzer::detect_traffic_direction(self);
+        let traffic_direction = crate::traffic::TrafficAnalyzer::detect_traffic_direction(self, &self.config);
         crate::sp_debug!("{} request headers callback invoked", traffic_direction);
         
         // Get initial request headers

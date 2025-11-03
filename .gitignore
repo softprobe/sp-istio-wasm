@@ -36,3 +36,5 @@ Thumbs.db
 /src/generated/
 deploy/otel-auto-instrumentation-for-dev.yaml
 scripts/cleanup.sh
+scripts/logs-demo-airline.sh
+scripts/logs-demo-ota.sh

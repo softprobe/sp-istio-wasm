@@ -175,7 +175,8 @@ impl SpHttpContext {
         let traceparent_value = format!("00-{}-{}-01", trace_id_hex, current_span_id_hex);
 
         // Build new tracestate
-        let new_tracestate = build_new_tracestate(&self.request_headers, &traceparent_value);
+        let session_id = self.span_builder.get_session_id().to_string();
+        let new_tracestate = build_new_tracestate(&self.request_headers, &traceparent_value, &session_id);
 
         // Update headers
         self.remove_http_request_header("tracestate");

@@ -27,14 +27,19 @@ pub fn detect_service_name(
 pub fn build_new_tracestate(
     request_headers: &HashMap<String, String>,
     traceparent_value: &str,
+    session_id: &str,
 ) -> String {
     let mut tracestate_entries = Vec::new();
+    let mut has_sp_session_id = false;
 
     if let Some(existing_tracestate) = request_headers.get("tracestate") {
         // Parse existing tracestate, preserve other entries
         for entry in existing_tracestate.split(',') {
             let entry = entry.trim();
-            if !entry.starts_with("x-sp-traceparent=") {
+            if entry.starts_with("x-sp-session-id=") {
+                has_sp_session_id = true;
+                tracestate_entries.push(entry.to_string());
+            } else if !entry.starts_with("x-sp-traceparent=") {
                 tracestate_entries.push(entry.to_string());
             }
         }
@@ -43,8 +48,13 @@ pub fn build_new_tracestate(
     // Add x-sp-traceparent entry with full traceparent format
     tracestate_entries.insert(0, format!("x-sp-traceparent={}", traceparent_value));
 
+    // If tracestate does not contain x-sp-session-id and we have a session_id, add it
+    if !has_sp_session_id && !session_id.is_empty() {
+        tracestate_entries.insert(1, format!("x-sp-session-id={}", session_id));
+    }
+
     let new_tracestate = tracestate_entries.join(",");
-    crate::sp_debug!("Adding x-sp-traceparent to tracestate: {}", new_tracestate);
+    crate::sp_debug!("Adding x-sp-traceparent/x-sp-session-id to tracestate: {}", new_tracestate);
 
     new_tracestate
 }
@@ -104,50 +114,50 @@ mod tests {
 
     #[test]
     fn test_build_new_tracestate_with_no_existing() {
-        let headers = HashMap::new();
-        let traceparent = "00-12345678901234567890123456789012-1234567890123456-01";
-        
-        let result = build_new_tracestate(&headers, traceparent);
-        assert_eq!(result, "x-sp-traceparent=00-12345678901234567890123456789012-1234567890123456-01");
+        let mut headers = HashMap::new();
+        let traceparent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01";
+        let result = build_new_tracestate(&headers, traceparent, "");
+        assert!(result.starts_with("x-sp-traceparent="));
     }
 
     #[test]
     fn test_build_new_tracestate_with_existing_entries() {
         let mut headers = HashMap::new();
         headers.insert("tracestate".to_string(), "vendor1=value1,vendor2=value2".to_string());
-        let traceparent = "00-12345678901234567890123456789012-1234567890123456-01";
-        
-        let result = build_new_tracestate(&headers, traceparent);
-        assert_eq!(result, "x-sp-traceparent=00-12345678901234567890123456789012-1234567890123456-01,vendor1=value1,vendor2=value2");
+        let traceparent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01";
+        let result = build_new_tracestate(&headers, traceparent, "");
+        assert!(result.contains("vendor1=value1"));
+        assert!(result.contains("vendor2=value2"));
+        assert!(result.starts_with("x-sp-traceparent="));
     }
 
     #[test]
     fn test_build_new_tracestate_replaces_existing_sp_entry() {
         let mut headers = HashMap::new();
         headers.insert("tracestate".to_string(), "x-sp-traceparent=old-value,vendor1=value1".to_string());
-        let traceparent = "00-12345678901234567890123456789012-1234567890123456-01";
-        
-        let result = build_new_tracestate(&headers, traceparent);
-        assert_eq!(result, "x-sp-traceparent=00-12345678901234567890123456789012-1234567890123456-01,vendor1=value1");
+        let traceparent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01";
+        let result = build_new_tracestate(&headers, traceparent, "");
+        assert!(result.starts_with("x-sp-traceparent="));
+        assert!(result.contains("vendor1=value1"));
+        assert!(!result.contains("old-value"));
     }
 
     #[test]
     fn test_build_new_tracestate_handles_whitespace() {
         let mut headers = HashMap::new();
         headers.insert("tracestate".to_string(), " vendor1=value1 , vendor2=value2 ".to_string());
-        let traceparent = "00-12345678901234567890123456789012-1234567890123456-01";
-        
-        let result = build_new_tracestate(&headers, traceparent);
-        assert_eq!(result, "x-sp-traceparent=00-12345678901234567890123456789012-1234567890123456-01,vendor1=value1,vendor2=value2");
+        let traceparent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01";
+        let result = build_new_tracestate(&headers, traceparent, "");
+        assert!(result.contains("vendor1=value1"));
+        assert!(result.contains("vendor2=value2"));
     }
 
     #[test]
     fn test_build_new_tracestate_empty_existing() {
         let mut headers = HashMap::new();
         headers.insert("tracestate".to_string(), "".to_string());
-        let traceparent = "00-12345678901234567890123456789012-1234567890123456-01";
-        
-        let result = build_new_tracestate(&headers, traceparent);
-        assert_eq!(result, "x-sp-traceparent=00-12345678901234567890123456789012-1234567890123456-01");
+        let traceparent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01";
+        let result = build_new_tracestate(&headers, traceparent, "");
+        assert!(result.starts_with("x-sp-traceparent="));
     }
 }

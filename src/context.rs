@@ -92,6 +92,12 @@ impl SpHttpContext {
     fn dispatch_async_extraction_save(&mut self) {
         crate::sp_debug!("Starting async extraction save (host={:?}, path={:?})", self.url_host, self.url_path);
 
+        // Check if this is a static resource request
+        if self.is_static_resource() {
+            crate::sp_debug!("Static resource detected, skipping trace upload");
+            return;
+        }
+
         // Check if session_id was parsed
         let has_session_id = self.span_builder.has_session_id();
         crate::sp_debug!("Session ID present: {}", has_session_id);
@@ -464,4 +470,49 @@ impl HttpContext for SpHttpContext {
 
         Action::Continue
     }
+}
+
+impl SpHttpContext {
+    /// Check if the current request is for static resources based on URL path and Content-Type
+    fn is_static_resource(&self) -> bool {
+        is_static_resource(self.url_path.as_deref(), &self.response_headers)
+    }
+}
+
+/// Check if the request is for static resources based on URL path and Content-Type
+fn is_static_resource(url_path: Option<&str>, response_headers: &HashMap<String, String>) -> bool {
+    // Check URL path extension
+    if let Some(path) = url_path {
+        let static_extensions = [
+            ".js", ".css", ".html", ".htm", ".svg", 
+            ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico",
+            ".ttf", ".woff", ".woff2", ".map"
+        ];
+        
+        for ext in &static_extensions {
+            if path.ends_with(ext) {
+                crate::sp_debug!("Static resource detected by URL extension: {}", path);
+                return true;
+            }
+        }
+    }
+    
+    // Check Content-Type header
+    if let Some(content_type) = response_headers.get("content-type") {
+        let static_content_types = [
+            "text/javascript", "application/javascript", "application/x-javascript",
+            "text/css", "text/html", "image/svg+xml", 
+            "image/png", "image/jpeg", "image/gif", "image/webp", "image/x-icon",
+            "font/ttf", "font/woff", "font/woff2", "application/octet-stream"
+        ];
+        
+        for ctype in &static_content_types {
+            if content_type.starts_with(ctype) {
+                crate::sp_debug!("Static resource detected by Content-Type: {}", content_type);
+                return true;
+            }
+        }
+    }
+    
+    false
 }

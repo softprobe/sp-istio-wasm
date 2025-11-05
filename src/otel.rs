@@ -76,6 +76,11 @@ impl SpanBuilder {
         !self.session_id.is_empty()
     }
 
+    /// Get current session_id string (may be empty if not set)
+    pub fn get_session_id(&self) -> &str {
+        &self.session_id
+    }
+
     /// Get trace_id as hex string
     pub fn get_current_span_id_hex(&self) -> String {
         self.current_span_id.iter().map(|b| format!("{:02x}", b)).collect::<String>()
@@ -101,6 +106,13 @@ impl SpanBuilder {
                         self.parent_span_id = Some(span_id);
                         crate::sp_debug!("Parsed trace context from x-sp-traceparent");
                         break;
+                    }
+                }
+                // 解析 tracestate 中的 x-sp-session-id（如果存在）
+                if self.session_id.is_empty() {
+                    if let Some(sid) = entry.strip_prefix("x-sp-session-id=") {
+                        crate::sp_debug!("Found x-sp-session-id entry in tracestate {}", sid);
+                        self.session_id = sid.to_string();
                     }
                 }
             }
@@ -130,9 +142,23 @@ impl SpanBuilder {
             crate::sp_debug!("Found session_id in headers: {}", masked);
             self.session_id = session_id.clone();
         } else {
-            crate::sp_debug!("No session_id found in headers, generating new one");
-            self.session_id = generate_session_id();
-            crate::sp_debug!("Generated session_id: sp-session-****");
+            // 如果未在 headers 中找到，则尝试从 tracestate 中解析 x-sp-session-id
+            if let Some(tracestate) = headers.get("tracestate") {
+                for entry in tracestate.split(',') {
+                    let entry = entry.trim();
+                    if let Some(sid) = entry.strip_prefix("x-sp-session-id=") {
+                        crate::sp_debug!("Found session_id in tracestate: ****");
+                        self.session_id = sid.to_string();
+                        break;
+                    }
+                }
+            }
+            // 如果依然没有，则生成新的，并在后续注入阶段补充到 tracestate 中
+            if self.session_id.is_empty() {
+                crate::sp_debug!("No session_id found in headers or tracestate, generating new one");
+                self.session_id = generate_session_id();
+                crate::sp_debug!("Generated session_id: sp-session-**** (will be added into tracestate during injection)");
+            }
         }
 
         // If no valid trace context found, generate new one

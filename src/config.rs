@@ -118,15 +118,6 @@ impl Config {
         }
     }
 
-    // Backward-compatible: map legacy api_key to public_key
-    fn parse_api_key(&mut self, config_json: &serde_json::Value) {
-        if let Some(api_key) = config_json.get("api_key").and_then(|v| v.as_str()) {
-            self.public_key = api_key.to_string();
-            let masked = if self.public_key.len() > 4 { "****" } else { "" };
-            crate::sp_info!("API key configured (mapped to public_key): {}", masked);
-        }
-    }
-
     fn parse_collection_rules(&mut self, config_json: &serde_json::Value) {
         if let Some(rules) = config_json.get("collectionRules") {
             let (server_paths, client_configs) = self.extract_collection_data(rules);

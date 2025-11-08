@@ -92,6 +92,12 @@ impl SpHttpContext {
     fn dispatch_async_extraction_save(&mut self) {
         crate::sp_debug!("Starting async extraction save (host={:?}, path={:?})", self.url_host, self.url_path);
 
+        // Early skip: Next.js RSC / prefetch requests
+        if self.is_rsc_or_prefetch() {
+            crate::sp_debug!("RSC/prefetch request detected, skipping trace upload");
+            return;
+        }
+
         // Check if this is a static resource request
         if self.is_static_resource() {
             crate::sp_debug!("Static resource detected, skipping trace upload");
@@ -476,6 +482,61 @@ impl SpHttpContext {
     /// Check if the current request is for static resources based on URL path and Content-Type
     fn is_static_resource(&self) -> bool {
         is_static_resource(self.url_path.as_deref(), &self.response_headers)
+    }
+
+    /// Heuristic: detect Next.js RSC / prefetch requests to skip upload
+    fn is_rsc_or_prefetch(&self) -> bool {
+        // Check URL path query
+        if let Some(ref path) = self.url_path {
+            if path.contains("_rsc=") {
+                crate::sp_debug!("Detected RSC query in path: {}", path);
+                return true;
+            }
+        }
+        // Additional framework-internal heuristics (e.g., Next.js App Router)
+        if let Some(ref path) = self.url_path {
+            if path.contains("/_next/data/") || path.starts_with("/_next/") {
+                crate::sp_debug!("Detected Next.js internal path: {}", path);
+                return true;
+            }
+        }
+        // Detect RSC Accept header used by React Server Components
+        let accept_lower = self
+            .request_headers
+            .get("accept")
+            .map(|v| v.to_ascii_lowercase())
+            .or_else(|| self.request_headers.get("Accept").map(|v| v.to_ascii_lowercase()));
+        if let Some(a) = accept_lower {
+            if a.contains("text/x-component") {
+                crate::sp_debug!("Detected RSC Accept header: {}", a);
+                return true;
+            }
+        }
+        // Headers-based detection (may vary by framework/version)
+        let has_rsc_header = self.request_headers.get("rsc").is_some() || self.request_headers.get("Rsc").is_some();
+        let has_next_prefetch = self.request_headers.get("next-router-prefetch").is_some() || self.request_headers.get("Next-Router-Prefetch").is_some();
+        let has_purpose_prefetch = self
+            .request_headers
+            .get("purpose")
+            .map(|v| v.eq_ignore_ascii_case("prefetch"))
+            .unwrap_or(false);
+        let has_sec_purpose_prefetch = self
+            .request_headers
+            .get("sec-purpose")
+            .map(|v| v.eq_ignore_ascii_case("prefetch"))
+            .or_else(|| self.request_headers.get("Sec-Purpose").map(|v| v.eq_ignore_ascii_case("prefetch")))
+            .unwrap_or(false);
+        let has_next_state_tree = self.request_headers.get("next-router-state-tree").is_some()
+            || self.request_headers.get("Next-Router-State-Tree").is_some();
+
+        if has_rsc_header || has_next_prefetch || has_purpose_prefetch || has_sec_purpose_prefetch || has_next_state_tree {
+            crate::sp_debug!(
+                "Detected prefetch/RSC headers (rsc={}, next-router-prefetch={}, purpose-prefetch={}, sec-purpose-prefetch={}, next-router-state-tree={})",
+                has_rsc_header, has_next_prefetch, has_purpose_prefetch, has_sec_purpose_prefetch, has_next_state_tree
+            );
+            return true;
+        }
+        false
     }
 }
 

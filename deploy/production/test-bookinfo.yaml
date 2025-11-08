@@ -29,7 +29,7 @@ spec:
     sp_backend_url: "https://o.softprobe.ai"
     traffic_direction: "outbound"  # Back to outbound for real testing
     service_name: "productpage-test"  # Service name for tracking
-    api_key: ""  # Empty API key for testing
+    public_key: ""  # Empty API key for testing
     
     # Collection Rules - capture outbound traffic from productpage  
     collectionRules:

@@ -54,7 +54,7 @@ pub struct Config {
     pub traffic_direction: Option<String>,
     pub collection_rules: Vec<CollectionRule>,
     pub exemption_rules: Vec<ExemptionRule>,
-    pub api_key: String,
+    pub public_key: String,
 }
 
 impl Default for Config {
@@ -65,7 +65,7 @@ impl Default for Config {
             service_name: "default-service".to_string(),
             collection_rules: vec![],
             exemption_rules: vec![],
-            api_key: String::new(),
+            public_key: String::new(),
         }
     }
 }
@@ -77,7 +77,7 @@ impl Config {
                 self.parse_backend_url(&config_json);
                 self.parse_traffic_direction(&config_json);
                 self.parse_service_name(&config_json);
-                self.parse_api_key(&config_json);
+                self.parse_public_key(&config_json);
                 self.parse_collection_rules(&config_json);
                 self.parse_exemption_rules(&config_json);
                 return true;
@@ -110,11 +110,20 @@ impl Config {
         }
     }
 
+    fn parse_public_key(&mut self, config_json: &serde_json::Value) {
+        if let Some(public_key) = config_json.get("public_key").and_then(|v| v.as_str()) {
+            self.public_key = public_key.to_string();
+            let masked = if self.public_key.len() > 4 { "****" } else { "" };
+            crate::sp_info!("Public key configured: {}", masked);
+        }
+    }
+
+    // Backward-compatible: map legacy api_key to public_key
     fn parse_api_key(&mut self, config_json: &serde_json::Value) {
         if let Some(api_key) = config_json.get("api_key").and_then(|v| v.as_str()) {
-            self.api_key = api_key.to_string();
-            let masked = if self.api_key.len() > 4 { "****" } else { "" };
-            crate::sp_info!("API key configured: {}", masked);
+            self.public_key = api_key.to_string();
+            let masked = if self.public_key.len() > 4 { "****" } else { "" };
+            crate::sp_info!("API key configured (mapped to public_key): {}", masked);
         }
     }
 
@@ -261,7 +270,7 @@ mod tests {
         assert_eq!(config.service_name, "default-service");
         assert!(config.traffic_direction.is_none());
         assert!(config.collection_rules.is_empty());
-        assert!(config.api_key.is_empty());
+        assert!(config.public_key.is_empty());
     }
 
     #[test]
@@ -317,7 +326,7 @@ mod tests {
         let config_str = serde_json::to_string(&json_config).unwrap();
         
         assert!(config.parse_from_json(config_str.as_bytes()));
-        assert_eq!(config.api_key, "test-api-key-123");
+        assert_eq!(config.public_key, "test-api-key-123");
     }
 
     #[test]

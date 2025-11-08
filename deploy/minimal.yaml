@@ -12,7 +12,7 @@ spec:
     - mode: SERVER
   pluginConfig:
     sp_backend_url: "https://o.softprobe.ai"
-    api_key: "demo-ota-01"
+    public_key: "demo-ota-01"
     traffic_direction: "server"
     collectionRules:
       http:
@@ -34,7 +34,7 @@ spec:
     - mode: CLIENT
   pluginConfig:
     sp_backend_url: "https://o.softprobe.ai"
-    api_key: "demo-ota-01"
+    public_key: "demo-ota-01"
     traffic_direction: "client"
     collectionRules:
       http:

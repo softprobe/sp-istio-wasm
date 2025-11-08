@@ -12,7 +12,7 @@ spec:
   pluginConfig:
     # Backend Configuration
     sp_backend_url: "https://dev.softprobe.ai"
-    api_key: "dev-api-key-placeholder"
+    public_key: "dev-public-key-placeholder"
     
     cache_ttl_seconds: 300  # 5 minutes
     max_cache_size_mb: 50   # Smaller cache for dev

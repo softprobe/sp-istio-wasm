@@ -131,7 +131,7 @@ impl CacheManager {
 ```rust
 pub struct BackendClient {
     url: String,
-    api_key: Option<String>,
+    public_key: Option<String>,
     timeout: Duration,
 }
 
@@ -249,7 +249,7 @@ wasm-objdump -h target/wasm32-unknown-unknown/release/sp_istio_agent.wasm
 #[derive(Deserialize, Debug)]
 pub struct PluginConfig {
     pub sp_backend_url: String,
-    pub api_key: Option<String>,
+    pub public_key: Option<String>,
     // Add new option here
     pub new_feature_enabled: Option<bool>,
 }

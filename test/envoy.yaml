@@ -47,7 +47,7 @@ static_resources:
                               "traffic_direction": "inbound",
                               "service_name": "sp-istio-wasm-integration-test",
                               "sp_backend_url": "https://o.softprobe.ai",
-                              "api_key": "test123",
+                              "public_key": "test123",
                               "collectionRules": {
                                 "http": {
                                   "server": [
@@ -110,7 +110,7 @@ static_resources:
                               "traffic_direction": "outbound",
                               "service_name": "sp-istio-wasm-integration-test",
                               "sp_backend_url": "https://o.softprobe.ai",
-                              "api_key": "test123",
+                              "public_key": "test123",
                               "collectionRules": {
                                 "http": {
                                   "server": [],

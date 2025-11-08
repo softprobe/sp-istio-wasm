@@ -37,7 +37,7 @@ pub struct SpanBuilder {
     current_span_id: Vec<u8>,  // 添加当前 span ID 字段
     service_name: String,
     traffic_direction: String,  // 添加traffic_direction字段
-    api_key: String,
+    public_key: String,
     session_id: String
 }
 
@@ -49,7 +49,7 @@ impl SpanBuilder {
             current_span_id: generate_span_id(),  // 初始化当前 span ID
             service_name: "default-service".to_string(),
             traffic_direction: "outbound".to_string(),  // 默认值
-            api_key: String::new(),
+            public_key: String::new(),
             session_id: String::new()
         }
     }
@@ -66,8 +66,8 @@ impl SpanBuilder {
     }
 
     // 添加设置api_key的方法
-    pub fn with_api_key(mut self, api_key: String) -> Self {
-        self.api_key = api_key;
+    pub fn with_public_key(mut self, public_key: String) -> Self {
+        self.public_key = public_key;
         self
     }
 
@@ -203,13 +203,17 @@ impl SpanBuilder {
         });
 
         // Add API key attribute if present
-        if !self.api_key.is_empty() {
+        log::debug!("DEBUG: public_key value: '{}'", self.public_key);
+        if !self.public_key.is_empty() {
+            log::debug!("DEBUG: Adding public_key attribute");
             attributes.push(KeyValue {
-                key: "sp.api.key".to_string(),
+                key: "sp.public.key".to_string(),
                 value: Some(AnyValue {
-                    value: Some(any_value::Value::StringValue(self.api_key.clone())),
+                    value: Some(any_value::Value::StringValue(self.public_key.clone())),
                 }),
             });
+        } else {
+            log::debug!("DEBUG: public_key is empty, not adding attribute");
         }
 
         // Add span type attribute
@@ -461,17 +465,17 @@ impl SpanBuilder {
         };
         let mut attributes = Vec::new();
 
-        log::debug!("DEBUG: api_key value: '{}'", self.api_key);
-        if !self.api_key.is_empty() {
-            log::debug!("DEBUG: Adding api_key attribute");
+        log::debug!("DEBUG: public_key value: '{}'", self.public_key);
+        if !self.public_key.is_empty() {
+            log::debug!("DEBUG: Adding public_key attribute");
             attributes.push(KeyValue {
-                key: "sp.api.key".to_string(),
+                key: "sp.public.key".to_string(),
                 value: Some(AnyValue {
-                    value: Some(any_value::Value::StringValue(self.api_key.clone())),
+                    value: Some(any_value::Value::StringValue(self.public_key.clone())),
                 }),
             });
         } else {
-            log::debug!("DEBUG: api_key is empty, not adding attribute");
+            log::debug!("DEBUG: public_key is empty, not adding attribute");
         }
 
         attributes.push(KeyValue {
@@ -611,7 +615,7 @@ pub fn get_current_timestamp_nanos() -> u64 {
 fn should_skip_header(key: &str) -> bool {
     matches!(key.to_lowercase().as_str(), 
         "authorization" | "cookie" | "set-cookie" | 
-        "x-api-key" | "x-auth-token" | "bearer" |
+        "x-public-key" | "x-auth-token" | "bearer" |
         "proxy-authorization"
     )
 }

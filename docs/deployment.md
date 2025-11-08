@@ -74,7 +74,7 @@ spec:
   sha256: [hash-will-be-updated]
   pluginConfig:
     sp_backend_url: "https://o.softprobe.ai"
-    api_key: "your-api-key-here"
+    public_key: "your-api-key-here"
     traffic_direction: "outbound"
 ```
 
@@ -84,7 +84,7 @@ spec:
 pluginConfig:
   # Backend Configuration
   sp_backend_url: "https://o.softprobe.ai"
-  api_key: "your-production-api-key"
+  public_key: "your-production-api-key"
   
   # Cache Configuration
   cache_ttl_seconds: 3600
@@ -175,18 +175,18 @@ spec:
       port: 53
 ```
 
-### API Key Management
+### Public Key Management
 
 ```bash
-# Create secret for API key
+# Create secret for Public key
 kubectl create secret generic sp-istio-config \
-  --from-literal=api-key=your-production-api-key \
+  --from-literal=public-key=your-production-public-key \
   -n istio-system
 
 # Reference in WasmPlugin
 spec:
   pluginConfig:
-    api_key: "{{ .Values.apiKey }}"
+    public_key: "{{ .Values.publicKey }}"
 ```
 
 ### Certificate Management

@@ -27,7 +27,7 @@ pub struct SpHttpContext {
 }
 
 impl SpHttpContext {
-    pub fn new(context_id: u32, config: Config) -> Self {
+   pub fn new(context_id: u32, config: Config) -> Self {
         let mut span_builder = SpanBuilder::new();
         span_builder = span_builder
             .with_service_name(config.service_name.clone())
@@ -145,7 +145,7 @@ impl SpHttpContext {
             (":authority", &authority),
             ("content-type", "application/x-protobuf"),
             ("content-length", &content_length),
-            ("x-api-key", &self.config.api_key),
+            ("x-public-key", &self.config.public_key),
         ];
 
         // Fire and forget async call to /v1/traces endpoint for storage
@@ -362,7 +362,7 @@ impl HttpContext for SpHttpContext {
 
         // Detect service name
         let detected_service_name = detect_service_name(&self.request_headers, &self.config.service_name);
-        let api_key = self.config.api_key.clone();
+        let public_key = self.config.public_key.clone();
 
         // Update url info
         self.update_url_info();
@@ -373,7 +373,7 @@ impl HttpContext for SpHttpContext {
             .clone()
             .with_service_name(detected_service_name)
             .with_traffic_direction(traffic_direction)
-            .with_api_key(api_key)
+            .with_public_key(public_key)
             .with_context(&initial_headers);
 
         // Inject trace context headers

@@ -67,7 +67,7 @@ func main() {
     q.Set("startTimeFrom", testStart)
     q.Set("size", "10")
     tracesEndpoint := fmt.Sprintf("%s/api/tenants/test-with-userid-v3/sessions?%s", strings.TrimRight(backendURL, "/"), q.Encode())
-    sessionURL := fmt.Sprintf("%s/api/tenants/test-with-userid-v3/sessions/%s/traces", strings.TrimRight(backendURL, "/"), url.PathEscape(sessionID))
+    sessionURL := fmt.Sprintf("%s/api/tenants/test-with-userid-v3/sessions/%s", strings.TrimRight(backendURL, "/"), url.PathEscape(sessionID))
     fmt.Println("Softprobe traces URL:", tracesEndpoint)
     fmt.Println("Softprobe session URL:", sessionURL)
     fmt.Println("Suggested curl (JSON): curl -s -H 'Accept: application/json' '"+tracesEndpoint+"' | jq .")

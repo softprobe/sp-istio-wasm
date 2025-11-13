@@ -4,7 +4,6 @@ apiVersion: extensions.istio.io/v1alpha1
 kind: WasmPlugin
 metadata:
   name: sp-istio-agent-server
-  namespace: istio-system
 spec:
   url: oci://docker.io/softprobe/sp-istio-wasm:v0.0.20
   phase: AUTHN
@@ -26,7 +25,6 @@ apiVersion: extensions.istio.io/v1alpha1
 kind: WasmPlugin
 metadata:
   name: sp-istio-agent-client
-  namespace: istio-system
 spec:
   url: oci://docker.io/softprobe/sp-istio-wasm:v0.0.20
   phase: AUTHN

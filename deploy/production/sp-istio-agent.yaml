@@ -10,7 +10,7 @@ metadata:
   namespace: istio-system  # Apply globally across all namespaces
 spec:
   # Apply to all workloads in the mesh (no selector = global)
-  url: oci://docker.io/softprobe/sp-istio-wasm:v1.0.0-test
+  url: oci://docker.io/softprobe/softprobe:v1.0.0-test
   sha256: "308263150da055abf3141a2f287ddfbb5cfb8ebe3da35a3dc2fa26456de1a48a"  # Will be updated automatically during build/release process
   phase: AUTHN  # Insert early in the filter chain
   
@@ -56,7 +56,7 @@ spec:
 #   # selector:
 #   #   matchLabels:
 #   #     app: my-service
-#   url: oci://gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/sp-istio-wasm:latest
+#   url: oci://gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/softprobe:latest
 #   sha256: ""
 #   phase: AUTHN
 #   pluginConfig:
@@ -80,7 +80,7 @@ spec:
 #   selector:
 #     matchLabels:
 #       app: api-service  # Replace with your service label
-#   url: oci://gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/sp-istio-wasm:latest
+#   url: oci://gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/softprobe:latest
 #   sha256: ""
 #   phase: AUTHN
 #   pluginConfig:

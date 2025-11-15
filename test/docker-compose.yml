@@ -34,7 +34,7 @@ services:
     environment:
       - ENVOY_HOST=envoy
       - BACKEND_URL=https://o.softprobe.ai
-      - SERVICE_NAME=sp-istio-wasm-integration-test
+      - SERVICE_NAME=softprobe-integration-test
     restart: always
     depends_on:
       - envoy

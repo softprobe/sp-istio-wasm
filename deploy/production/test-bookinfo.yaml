@@ -19,7 +19,7 @@ spec:
   #   - mode: CLIENT  # Test without this restriction
   
   # Use the public Docker Hub image (which contains the WASM binary)
-  url: oci://docker.io/softprobe/sp-istio-wasm:v1.0.13-https
+  url: oci://docker.io/softprobe/softprobe:v1.0.13-https
   sha256: "736b2c574ea820ebfe6e1b134e35c32b5fe534c98c2e24e8da468f86086f48fb"
   phase: AUTHN  # Insert early for header injection and request control
   

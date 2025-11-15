@@ -95,12 +95,11 @@ jobs:
         make docker-build
         
         # Also tag as latest for releases
-        docker tag ${REGISTRY}/sp-istio-wasm:$VERSION ${REGISTRY}/sp-istio-wasm:latest
-        docker tag ${REGISTRY}/sp-envoy:$VERSION ${REGISTRY}/sp-envoy:latest
+        docker tag ${REGISTRY}/softprobe:$VERSION ${REGISTRY}/softprobe:latest
         
         # Push all tags
-        docker push ${REGISTRY}/sp-istio-wasm:$VERSION
-        docker push ${REGISTRY}/sp-istio-wasm:latest
+        docker push ${REGISTRY}/softprobe:$VERSION
+        docker push ${REGISTRY}/softprobe:latest
         docker push ${REGISTRY}/sp-envoy:$VERSION
         docker push ${REGISTRY}/sp-envoy:latest
 
@@ -116,7 +115,7 @@ jobs:
         
         ### Docker Images
         
-        - `softprobe/sp-istio-wasm:${{ steps.version.outputs.tag }}`
+        - `softprobe/softprobe:${{ steps.version.outputs.tag }}`
         - `softprobe/sp-envoy:${{ steps.version.outputs.tag }}`
         
         ### WASM Binary
@@ -188,8 +187,8 @@ jobs:
         echo "🎉 Release ${{ steps.version.outputs.tag }} completed successfully!"
         echo ""
         echo "📦 Docker Images Published:"
-        echo "  - softprobe/sp-istio-wasm:${{ steps.version.outputs.tag }}"
-        echo "  - softprobe/sp-istio-wasm:latest"
+        echo "  - softprobe/softprobe:${{ steps.version.outputs.tag }}"
+        echo "  - softprobe/softprobe:latest"
         echo "  - softprobe/sp-envoy:${{ steps.version.outputs.tag }}"
         echo "  - softprobe/sp-envoy:latest"
         echo ""

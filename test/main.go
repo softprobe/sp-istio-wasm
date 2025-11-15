@@ -41,7 +41,7 @@ func initTracer() *sdktrace.TracerProvider {
 
 	res, err := resource.New(context.Background(),
 		resource.WithAttributes(
-			semconv.ServiceNameKey.String("sp-istio-wasm-integration-test"),
+			semconv.ServiceNameKey.String("softprobe-integration-test"),
 		),
 	)
 	if err != nil {

@@ -23,7 +23,7 @@ func mustGetEnv(key, def string) string {
 func main() {
 	rand.Seed(time.Now().UnixNano())
 	backendURL := mustGetEnv("BACKEND_URL", "https://o.softprobe.ai")
-	serviceName := mustGetEnv("SERVICE_NAME", "sp-istio-wasm-integration-test")
+	serviceName := mustGetEnv("SERVICE_NAME", "softprobe-integration-test")
 	sessionID := fmt.Sprintf("session-%d", time.Now().Unix())
 	testID := fmt.Sprintf("test-%d", rand.Intn(1_000_000))
 

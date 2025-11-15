@@ -21,7 +21,7 @@ NAMESPACE := default
 
 # Docker configuration
 REGISTRY := softprobe
-WASM_IMAGE := $(REGISTRY)/sp-istio-wasm
+WASM_IMAGE := $(REGISTRY)/softprobe
 ENVOY_IMAGE := $(REGISTRY)/sp-envoy
 # Auto-extract version from Cargo.toml
 VERSION := $(shell grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/v\1/')

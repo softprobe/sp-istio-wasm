@@ -5,7 +5,7 @@ kind: WasmPlugin
 metadata:
   name: sp-istio-agent-server
 spec:
-  url: oci://docker.io/softprobe/sp-istio-wasm:v0.0.20
+  url: oci://docker.io/softprobe/softprobe:latest
   phase: AUTHN
   match:
     - mode: SERVER
@@ -26,7 +26,7 @@ kind: WasmPlugin
 metadata:
   name: sp-istio-agent-client
 spec:
-  url: oci://docker.io/softprobe/sp-istio-wasm:v0.0.20
+  url: oci://docker.io/softprobe/softprobe:latest
   phase: AUTHN
   match:
     - mode: CLIENT

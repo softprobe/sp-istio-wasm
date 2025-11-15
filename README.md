@@ -21,7 +21,7 @@ Softprobe Agent is a WebAssembly (WASM) plugin for Istio that captures complete 
 
 ## Documentation
 
-[Documentation]https://document.softprobe.ai/
+[Documentation](https://document.softprobe.ai/)
 
 ## Quick Start
 

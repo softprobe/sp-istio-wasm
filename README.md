@@ -1,4 +1,4 @@
-# SP-Istio Agent
+# Softprobe Agent
 
 **Business-level distributed tracing and analytics for Istio service mesh**
 
@@ -6,9 +6,9 @@ Zero-code changes required • Complete request visibility • Advanced troubles
 
 High-performance, asynchronous HTTP session capture built with Rust and WebAssembly (WASM)
 
-## What is SP-Istio Agent?
+## What is Softprobe Agent?
 
-SP-Istio Agent is a WebAssembly (WASM) plugin for Istio that captures complete HTTP request/response data and sends it to Softprobe for business-level analytics and troubleshooting without modifying application code.
+Softprobe Agent is a WebAssembly (WASM) plugin for Istio that captures complete HTTP request/response data and sends it to Softprobe for business-level analytics and troubleshooting without modifying application code.
 
 ### Key Benefits
 

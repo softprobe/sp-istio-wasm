@@ -170,7 +170,7 @@ Transaction-12345
 - Performance bottlenecks hard to identify
 
 **After**:
-- Local Envoy testing with SP-Istio Agent
+- Local Envoy testing with Softprobe Agent
 - Production debugging with enhanced traces
 - Clear service dependency mapping
 - Performance bottlenecks immediately visible

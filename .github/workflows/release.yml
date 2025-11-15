@@ -96,6 +96,7 @@ jobs:
         
         # Also tag as latest for releases
         docker tag ${REGISTRY}/softprobe:$VERSION ${REGISTRY}/softprobe:latest
+        docker tag ${REGISTRY}/sp-envoy:$VERSION ${REGISTRY}/sp-envoy:latest
         
         # Push all tags
         docker push ${REGISTRY}/softprobe:$VERSION
@@ -189,8 +190,8 @@ jobs:
         echo "📦 Docker Images Published:"
         echo "  - softprobe/softprobe:${{ steps.version.outputs.tag }}"
         echo "  - softprobe/softprobe:latest"
-        echo "  - softprobe/softprobe:${{ steps.version.outputs.tag }}"
-        echo "  - softprobe/softprobe:latest"
+        echo "  - softprobe/sp-envoy:${{ steps.version.outputs.tag }}"
+        echo "  - softprobe/sp-envoy:latest"
         echo ""
         echo "📋 Release Assets:"
         echo "  - sp_istio_agent.wasm"

@@ -70,7 +70,7 @@ metadata:
   name: sp-istio-agent
   namespace: istio-system
 spec:
-  url: oci://softprobe/sp-istio-wasm:latest
+  url: oci://softprobe/softprobe:latest
   sha256: [hash-will-be-updated]
   pluginConfig:
     sp_backend_url: "https://o.softprobe.ai"
@@ -441,5 +441,5 @@ kubectl get wasmplugin sp-istio-agent -n istio-system -o jsonpath='{.spec.url}'
 
 # Update to specific version
 kubectl patch wasmplugin sp-istio-agent -n istio-system \
-  --type='json' -p='[{"op": "replace", "path": "/spec/url", "value": "oci://softprobe/sp-istio-wasm:v1.2.0"}]'
+  --type='json' -p='[{"op": "replace", "path": "/spec/url", "value": "oci://softprobe/softprobe:v1.2.0"}]'
 ```

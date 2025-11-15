@@ -76,22 +76,22 @@ update_deployment_manifests() {
     
     # Update minimal.yaml
     if [ -f "deploy/minimal.yaml" ]; then
-        sed -i "" "s|oci://softprobe/sp-istio-wasm:.*|oci://softprobe/sp-istio-wasm:$version|" deploy/minimal.yaml
+        sed -i "" "s|oci://softprobe/softprobe:.*|oci://softprobe/softprobe:$version|" deploy/minimal.yaml
         print_success "Updated deploy/minimal.yaml"
         ((updated++))
     fi
     
     # Update production.yaml
     if [ -f "deploy/production.yaml" ]; then
-        sed -i "" "s|oci://softprobe/sp-istio-wasm:.*|oci://softprobe/sp-istio-wasm:$version|" deploy/production.yaml
+        sed -i "" "s|oci://softprobe/softprobe:.*|oci://softprobe/softprobe:$version|" deploy/production.yaml
         print_success "Updated deploy/production.yaml"
         ((updated++))
     fi
     
     # Update examples
     for file in deploy/examples/*.yaml; do
-        if [ -f "$file" ] && grep -q "sp-istio-wasm" "$file"; then
-            sed -i "" "s|oci://softprobe/sp-istio-wasm:.*|oci://softprobe/sp-istio-wasm:$version|" "$file"
+        if [ -f "$file" ] && grep -q "softprobe" "$file"; then
+            sed -i "" "s|oci://softprobe/softprobe:.*|oci://softprobe/softprobe:$version|" "$file"
             print_success "Updated $file"
             ((updated++))
         fi

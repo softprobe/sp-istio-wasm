@@ -45,7 +45,7 @@ static_resources:
                           value: |
                             {
                               "traffic_direction": "inbound",
-                              "service_name": "sp-istio-wasm-integration-test",
+                              "service_name": "softprobe-integration-test",
                               "sp_backend_url": "https://o.softprobe.ai",
                               "public_key": "wzmD5u5n_dNBbjTSS_Ff0UqCHEsUsILbIsSI2tDedAE",
                               "collectionRules": {
@@ -108,7 +108,7 @@ static_resources:
                           value: |
                             {
                               "traffic_direction": "outbound",
-                              "service_name": "sp-istio-wasm-integration-test",
+                              "service_name": "softprobe-integration-test",
                               "sp_backend_url": "https://o.softprobe.ai",
                               "public_key": "wzmD5u5n_dNBbjTSS_Ff0UqCHEsUsILbIsSI2tDedAE",
                               "collectionRules": {

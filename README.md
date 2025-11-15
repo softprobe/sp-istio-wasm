@@ -39,16 +39,16 @@ brew install kind kubectl istioctl
 ### 1. Set up a `Kind` cluster, `Istio` and `OpenTelemetry Operator`.
 
 ```bash
-curl -L https://raw.githubusercontent.com/softprobe/sp-istio-wasm/refs/heads/main/scripts/cluster-setup.sh | sh
+curl -L https://raw.githubusercontent.com/softprobe/softprobe/refs/heads/main/scripts/cluster-setup.sh | sh
 ```
 
 ### 2. Install the travel demo
 
 ```bash
 # Install Softprobe Istio WASM Plugin
-kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio-wasm/refs/heads/main/deploy/minimal.yaml
+kubectl apply -f https://raw.githubusercontent.com/softprobe/softprobe/refs/heads/main/deploy/minimal.yaml
 # Install demo app
-kubectl apply -f https://raw.githubusercontent.com/softprobe/sp-istio-wasm/refs/heads/main/examples/travel/apps.yaml
+kubectl apply -f https://raw.githubusercontent.com/softprobe/softprobe/refs/heads/main/examples/travel/apps.yaml
 # Expose the demo
 sleep 10 && kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80
 ```
@@ -206,7 +206,7 @@ This project includes automated GitHub Actions workflows:
 - **Actions**:
   - Updates `Cargo.toml` version from tag
   - Builds and tests WASM binary
-  - Publishes Docker images to `softprobe/sp-istio-wasm` and `softprobe/sp-envoy`
+  - Publishes Docker images to `softprobe/softprobe` and `softprobe/sp-envoy`
   - Creates GitHub release with WASM binary and deployment files
 
 #### Required GitHub Secrets for Release
